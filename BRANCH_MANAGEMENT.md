@@ -4,28 +4,13 @@
 
 This repository uses `main` as its default branch. All development should be based on this branch, and all pull requests should target this branch.
 
-## Legacy Branch: `master`
+## Legacy Branch: `master` (Removed)
 
-The `master` branch is a legacy branch that has been deprecated. It has been kept for backward compatibility but will eventually be removed.
+The legacy `master` branch has been removed. All development now takes place on the `main` branch.
 
-## Recommendations for the `master` Branch
+## Note for Users with Existing Clones
 
-### Short-term (1-3 months)
-
-1. **Keep but don't update**: Keep the `master` branch but don't push updates to it
-2. **Deprecation notice**: Maintain the deprecation notice in the README
-3. **Redirect contributors**: Direct all contributors to use the `main` branch
-
-### Medium-term (3-6 months)
-
-1. **Make read-only**: Consider making the `master` branch read-only through branch protection rules
-2. **Notify users**: Send notifications to repository watchers about the upcoming removal
-3. **Update documentation**: Ensure all documentation references the `main` branch
-
-### Long-term (6+ months)
-
-1. **Remove the branch**: Delete the `master` branch once it's reasonable to assume most users have transitioned
-2. **Maintain redirects**: GitHub will maintain redirects from `master` to `main` for some time
+If you had previously cloned this repository when it used the `master` branch, you will need to update your local repository to use the `main` branch instead. GitHub will maintain redirects from `master` to `main` for some time, but it's best to update your local setup.
 
 ## Instructions for Contributors
 
