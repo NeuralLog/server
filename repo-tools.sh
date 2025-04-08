@@ -32,7 +32,7 @@ show_help() {
     echo ""
     echo -e "\033[32mOptions:\033[0m"
     echo "  -a, --action ACTION       Action to perform (default: status)"
-    echo "  -r, --repo REPO           Repository to operate on (required)"
+    echo "  -r, --repo REPO           Repository to operate on (required for single repo actions)"
     echo "  -m, --message MESSAGE     Commit message (required for commit actions)"
     echo "  -h, --help                Show this help message"
     echo ""
@@ -46,6 +46,9 @@ show_help() {
     echo "  add-commit-push - Add, commit, and push all changes (requires -m)"
     echo "  sync          - Pull, add, commit, and push all changes (requires -m)"
     echo "  list          - List available repositories"
+    echo "  pull-all      - Pull the latest changes from all repositories"
+    echo "  push-all      - Push local changes to all repositories"
+    echo "  status-all    - Show the status of all repositories"
     echo ""
     echo -e "\033[32mRepositories:\033[0m"
     echo "  specs         - NeuralLog Specifications"
@@ -58,6 +61,8 @@ show_help() {
     echo "  ./repo-tools.sh -a pull -r server"
     echo "  ./repo-tools.sh -a add-commit -r mcp-client -m 'Update documentation'"
     echo "  ./repo-tools.sh -a sync -r specs -m 'Weekly update'"
+    echo "  ./repo-tools.sh -a pull-all"
+    echo "  ./repo-tools.sh -a push-all"
     echo ""
     echo -e "\033[33mNote: This script respects that each repository is independent.\033[0m"
     echo -e "\033[33m      It does NOT treat the directories as a monorepo.\033[0m"
@@ -94,18 +99,39 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+# Execute git command in repository
+execute_git_command() {
+    local repo_path="$1"
+    local command="$2"
+    local description="$3"
+    
+    local current_dir=$(pwd)
+    cd "$repo_path" || { echo "Error: Cannot change to directory $repo_path"; return 1; }
+    
+    echo -e "\033[90mExecuting in $repo_path: $command\033[0m"
+    eval "$command"
+    local status=$?
+    
+    if [ $status -ne 0 ]; then
+        echo -e "\033[31mError executing command in $repo_path\033[0m"
+    fi
+    
+    cd "$current_dir" || { echo "Error: Cannot change back to original directory"; return 1; }
+    return $status
+}
+
 # List available repositories
 list_repositories() {
     echo -e "\033[36mAvailable Repositories:\033[0m"
     for repo_key in "${!repos[@]}"; do
         repo_path="${repos[$repo_key]}"
         repo_desc="${descriptions[$repo_key]}"
-
+        
         # Check if the repository exists
         if [ -d "$repo_path" ]; then
             current_dir=$(pwd)
             cd "$repo_path" 2>/dev/null
-
+            
             # Get the current branch
             current_branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
             if [ $? -eq 0 ]; then
@@ -113,33 +139,12 @@ list_repositories() {
             else
                 echo -e "  \033[33m$repo_key - $repo_desc (Not a git repository)\033[0m"
             fi
-
+            
             cd "$current_dir"
         else
             echo -e "  \033[31m$repo_key - $repo_desc (Directory not found)\033[0m"
         fi
     done
-}
-
-# Execute git command in repository
-execute_git_command() {
-    local repo_path="$1"
-    local command="$2"
-    local description="$3"
-
-    local current_dir=$(pwd)
-    cd "$repo_path" || { echo "Error: Cannot change to directory $repo_path"; return 1; }
-
-    echo -e "\033[90mExecuting in $repo_path: $command\033[0m"
-    eval "$command"
-    local status=$?
-
-    if [ $status -ne 0 ]; then
-        echo -e "\033[31mError executing command in $repo_path\033[0m"
-    fi
-
-    cd "$current_dir" || { echo "Error: Cannot change back to original directory"; return 1; }
-    return $status
 }
 
 # Process a single repository
@@ -148,16 +153,21 @@ process_repository() {
     local repo_path="${repos[$repo_key]}"
     local repo_branch="${branches[$repo_key]}"
     local repo_desc="${descriptions[$repo_key]}"
-
+    local current_action="$2"
+    
+    if [ -z "$current_action" ]; then
+        current_action="$ACTION"
+    fi
+    
     # Check if the repository exists
     if [ ! -d "$repo_path" ]; then
         echo -e "\033[31mError: Repository directory '$repo_path' not found\033[0m"
         return 1
     fi
-
+    
     echo -e "\033[36mProcessing $repo_desc ($repo_path)\033[0m"
-
-    case "$ACTION" in
+    
+    case "$current_action" in
         status)
             execute_git_command "$repo_path" "git status" "Checking status"
             ;;
@@ -205,13 +215,22 @@ process_repository() {
             execute_git_command "$repo_path" "git push origin $repo_branch" "Pushing changes to remote"
             ;;
         *)
-            echo -e "\033[31mUnknown action: $ACTION\033[0m"
+            echo -e "\033[31mUnknown action: $current_action\033[0m"
             show_help
             return 1
             ;;
     esac
-
+    
     echo ""
+}
+
+# Process all repositories for a specific action
+process_all_repositories() {
+    local action="$1"
+    
+    for repo_key in "${!repos[@]}"; do
+        process_repository "$repo_key" "$action"
+    done
 }
 
 # Handle list action
@@ -220,8 +239,19 @@ if [ "$ACTION" = "list" ]; then
     exit 0
 fi
 
+# Handle all-repositories actions
+if [[ "$ACTION" == *-all ]]; then
+    single_action=${ACTION%-all}
+    echo -e "\033[36mPerforming '$single_action' on all repositories...\033[0m"
+    
+    process_all_repositories "$single_action"
+    
+    echo -e "\033[32mAll repository operations completed.\033[0m"
+    exit 0
+fi
+
 # Validate action
-valid_actions=("status" "pull" "push" "add" "commit" "add-commit" "add-commit-push" "sync" "list")
+valid_actions=("status" "pull" "push" "add" "commit" "add-commit" "add-commit-push" "sync" "list" "pull-all" "push-all" "status-all")
 valid_action=0
 for action in "${valid_actions[@]}"; do
     if [ "$ACTION" = "$action" ]; then
@@ -238,7 +268,7 @@ fi
 
 # Validate repository
 if [ -z "$REPO" ]; then
-    echo -e "\033[31mError: Repository must be specified\033[0m"
+    echo -e "\033[31mError: Repository must be specified for action '$ACTION'\033[0m"
     show_help
     exit 1
 fi

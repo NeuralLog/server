@@ -39,7 +39,7 @@ function Show-Help {
     Write-Host "NeuralLog Repository Tools" -ForegroundColor Cyan
     Write-Host "=========================" -ForegroundColor Cyan
     Write-Host ""
-    Write-Host "Usage: .\repo-tools.ps1 -Action <action> -Repo <repo> [-CommitMessage <message>]" -ForegroundColor Yellow
+    Write-Host "Usage: .\repo-tools.ps1 -Action <action> [-Repo <repo>] [-CommitMessage <message>]" -ForegroundColor Yellow
     Write-Host ""
     Write-Host "Actions:" -ForegroundColor Green
     Write-Host "  status        - Show the status of a repository"
@@ -51,6 +51,9 @@ function Show-Help {
     Write-Host "  add-commit-push - Add, commit, and push all changes (requires -CommitMessage)"
     Write-Host "  sync          - Pull, add, commit, and push all changes (requires -CommitMessage)"
     Write-Host "  list          - List available repositories"
+    Write-Host "  pull-all      - Pull the latest changes from all repositories"
+    Write-Host "  push-all      - Push local changes to all repositories"
+    Write-Host "  status-all    - Show the status of all repositories"
     Write-Host ""
     Write-Host "Repositories:" -ForegroundColor Green
     Write-Host "  specs         - NeuralLog Specifications"
@@ -63,6 +66,8 @@ function Show-Help {
     Write-Host "  .\repo-tools.ps1 -Action pull -Repo server"
     Write-Host "  .\repo-tools.ps1 -Action add-commit -Repo mcp-client -CommitMessage 'Update documentation'"
     Write-Host "  .\repo-tools.ps1 -Action sync -Repo specs -CommitMessage 'Weekly update'"
+    Write-Host "  .\repo-tools.ps1 -Action pull-all"
+    Write-Host "  .\repo-tools.ps1 -Action push-all"
     Write-Host ""
     Write-Host "Note: This script respects that each repository is independent." -ForegroundColor Yellow
     Write-Host "      It does NOT treat the directories as a monorepo." -ForegroundColor Yellow
@@ -194,6 +199,17 @@ function Process-Repository {
     Write-Host ""
 }
 
+# Process all repositories for a specific action
+function Process-All-Repositories {
+    param (
+        [string]$Action
+    )
+
+    foreach ($key in $repoInfo.Keys) {
+        Process-Repository -RepoKey $key -RepoData $repoInfo[$key]
+    }
+}
+
 # Main script execution
 if ($Help) {
     Show-Help
@@ -206,8 +222,23 @@ if ($Action -eq "list") {
     exit 0
 }
 
+# Handle all-repositories actions
+$allRepoActions = @("pull-all", "push-all", "status-all")
+if ($allRepoActions.Contains($Action.ToLower())) {
+    $singleAction = $Action.ToLower().Replace("-all", "")
+    Write-Host "Performing '$singleAction' on all repositories..." -ForegroundColor Cyan
+
+    foreach ($key in $repoInfo.Keys) {
+        $Action = $singleAction
+        Process-Repository -RepoKey $key -RepoData $repoInfo[$key]
+    }
+
+    Write-Host "All repository operations completed." -ForegroundColor Green
+    exit 0
+}
+
 # Validate action
-$validActions = @("status", "pull", "push", "add", "commit", "add-commit", "add-commit-push", "sync", "list")
+$validActions = @("status", "pull", "push", "add", "commit", "add-commit", "add-commit-push", "sync", "list", "pull-all", "push-all", "status-all")
 if (-not $validActions.Contains($Action.ToLower())) {
     Write-Host "Error: Invalid action '$Action'" -ForegroundColor Red
     Show-Help
@@ -216,7 +247,7 @@ if (-not $validActions.Contains($Action.ToLower())) {
 
 # Validate repository
 if ([string]::IsNullOrEmpty($Repo)) {
-    Write-Host "Error: Repository must be specified" -ForegroundColor Red
+    Write-Host "Error: Repository must be specified for action '$Action'" -ForegroundColor Red
     Show-Help
     exit 1
 }
