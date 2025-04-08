@@ -21,14 +21,16 @@ export interface RedisOptions {
 export class RedisStorageAdapter implements StorageAdapter {
   private client: Redis;
   private initialized: boolean = false;
-  private defaultNamespace: string = 'default';
+  private namespace: string;
 
   /**
    * Constructor
    *
+   * @param namespace Namespace for this storage adapter
    * @param options Redis connection options
    */
-  constructor(options: RedisOptions = {}) {
+  constructor(namespace: string = 'default', options: RedisOptions = {}) {
+    this.namespace = namespace;
     // Create Redis client
     if (options.url) {
       this.client = new Redis(options.url, {
@@ -53,11 +55,18 @@ export class RedisStorageAdapter implements StorageAdapter {
   }
 
   /**
-   * Initialize the adapter
+   * Get the namespace for this storage adapter
    *
-   * @param namespace Optional namespace for logical isolation of data
+   * @returns The namespace for this storage adapter
    */
-  public async initialize(namespace?: string): Promise<void> {
+  public getNamespace(): string {
+    return this.namespace;
+  }
+
+  /**
+   * Initialize the adapter
+   */
+  public async initialize(): Promise<void> {
     if (this.initialized) {
       return;
     }
@@ -65,14 +74,9 @@ export class RedisStorageAdapter implements StorageAdapter {
     try {
       // Test connection
       await this.client.ping();
-      
-      // Set default namespace if provided
-      if (namespace) {
-        this.defaultNamespace = namespace;
-      }
-      
+
       this.initialized = true;
-      logger.info(`Redis storage adapter initialized with namespace: ${this.defaultNamespace}`);
+      logger.info(`Redis storage adapter initialized for namespace: ${this.namespace}`);
     } catch (error) {
       logger.error(`Error initializing RedisStorageAdapter: ${error instanceof Error ? error.message : String(error)}`);
       throw error;
@@ -85,11 +89,9 @@ export class RedisStorageAdapter implements StorageAdapter {
    * @param logId Log ID
    * @param logName Log name
    * @param logEntry Log entry
-   * @param namespace Optional namespace for logical isolation of data
    */
-  public async storeLogEntry(logId: string, logName: string, logEntry: any, namespace?: string): Promise<void> {
+  public async storeLogEntry(logId: string, logName: string, logEntry: any): Promise<void> {
     await this.ensureInitialized();
-    const ns = namespace || this.defaultNamespace;
 
     try {
       // Create a document with the log entry
@@ -101,18 +103,18 @@ export class RedisStorageAdapter implements StorageAdapter {
       };
 
       // Store the log entry
-      const logKey = this.getLogKey(ns, logName, logId);
+      const logKey = this.getLogKey(logName, logId);
       await this.client.set(logKey, JSON.stringify(document));
 
       // Add to the log name set
-      const logNamesKey = this.getLogNamesKey(ns);
+      const logNamesKey = this.getLogNamesKey();
       await this.client.sadd(logNamesKey, logName);
 
       // Add to the log entries sorted set (for time-based queries)
-      const logEntriesKey = this.getLogEntriesKey(ns, logName);
+      const logEntriesKey = this.getLogEntriesKey(logName);
       await this.client.zadd(logEntriesKey, new Date(document.timestamp).getTime(), logId);
 
-      logger.info(`Stored log entry: ${logName}, ID: ${logId}, namespace: ${ns}`);
+      logger.info(`Stored log entry: ${logName}, ID: ${logId}, namespace: ${this.namespace}`);
     } catch (error) {
       logger.error(`Error storing log entry: ${error instanceof Error ? error.message : String(error)}`);
       throw error;
@@ -124,23 +126,21 @@ export class RedisStorageAdapter implements StorageAdapter {
    *
    * @param logName Log name
    * @param logId Log ID
-   * @param namespace Optional namespace for logical isolation of data
    * @returns Log entry or null if not found
    */
-  public async getLogEntryById(logName: string, logId: string, namespace?: string): Promise<any | null> {
+  public async getLogEntryById(logName: string, logId: string): Promise<any | null> {
     await this.ensureInitialized();
-    const ns = namespace || this.defaultNamespace;
 
     try {
       // Get the log entry
-      const logKey = this.getLogKey(ns, logName, logId);
+      const logKey = this.getLogKey(logName, logId);
       const entry = await this.client.get(logKey);
 
       if (entry) {
-        logger.info(`Retrieved log entry: ${logName}, ID: ${logId}, namespace: ${ns}`);
+        logger.info(`Retrieved log entry: ${logName}, ID: ${logId}, namespace: ${this.namespace}`);
         return JSON.parse(entry);
       } else {
-        logger.info(`Log entry not found: ${logName}, ID: ${logId}, namespace: ${ns}`);
+        logger.info(`Log entry not found: ${logName}, ID: ${logId}, namespace: ${this.namespace}`);
         return null;
       }
     } catch (error) {
@@ -155,20 +155,18 @@ export class RedisStorageAdapter implements StorageAdapter {
    * @param logName Log name
    * @param logId Log ID
    * @param logEntry Log entry
-   * @param namespace Optional namespace for logical isolation of data
    * @returns True if the log entry was updated, false if it didn't exist
    */
-  public async updateLogEntryById(logName: string, logId: string, logEntry: any, namespace?: string): Promise<boolean> {
+  public async updateLogEntryById(logName: string, logId: string, logEntry: any): Promise<boolean> {
     await this.ensureInitialized();
-    const ns = namespace || this.defaultNamespace;
 
     try {
       // Check if the log entry exists
-      const logKey = this.getLogKey(ns, logName, logId);
+      const logKey = this.getLogKey(logName, logId);
       const existingEntry = await this.client.get(logKey);
 
       if (!existingEntry) {
-        logger.info(`Log entry not found for update: ${logName}, ID: ${logId}, namespace: ${ns}`);
+        logger.info(`Log entry not found for update: ${logName}, ID: ${logId}, namespace: ${this.namespace}`);
         return false;
       }
 
@@ -186,10 +184,10 @@ export class RedisStorageAdapter implements StorageAdapter {
       await this.client.set(logKey, JSON.stringify(document));
 
       // Update the timestamp in the sorted set
-      const logEntriesKey = this.getLogEntriesKey(ns, logName);
+      const logEntriesKey = this.getLogEntriesKey(logName);
       await this.client.zadd(logEntriesKey, new Date(document.timestamp).getTime(), logId);
 
-      logger.info(`Updated log entry: ${logName}, ID: ${logId}, namespace: ${ns}`);
+      logger.info(`Updated log entry: ${logName}, ID: ${logId}, namespace: ${this.namespace}`);
       return true;
     } catch (error) {
       logger.error(`Error updating log entry: ${error instanceof Error ? error.message : String(error)}`);
@@ -202,27 +200,25 @@ export class RedisStorageAdapter implements StorageAdapter {
    *
    * @param logName Log name
    * @param logId Log ID
-   * @param namespace Optional namespace for logical isolation of data
    * @returns True if the log entry was deleted, false if it didn't exist
    */
-  public async deleteLogEntryById(logName: string, logId: string, namespace?: string): Promise<boolean> {
+  public async deleteLogEntryById(logName: string, logId: string): Promise<boolean> {
     await this.ensureInitialized();
-    const ns = namespace || this.defaultNamespace;
 
     try {
       // Delete the log entry
-      const logKey = this.getLogKey(ns, logName, logId);
+      const logKey = this.getLogKey(logName, logId);
       const deleted = await this.client.del(logKey);
 
       // Remove from the sorted set
-      const logEntriesKey = this.getLogEntriesKey(ns, logName);
+      const logEntriesKey = this.getLogEntriesKey(logName);
       await this.client.zrem(logEntriesKey, logId);
 
       if (deleted > 0) {
-        logger.info(`Deleted log entry: ${logName}, ID: ${logId}, namespace: ${ns}`);
+        logger.info(`Deleted log entry: ${logName}, ID: ${logId}, namespace: ${this.namespace}`);
         return true;
       } else {
-        logger.info(`Log entry not found for deletion: ${logName}, ID: ${logId}, namespace: ${ns}`);
+        logger.info(`Log entry not found for deletion: ${logName}, ID: ${logId}, namespace: ${this.namespace}`);
         return false;
       }
     } catch (error) {
@@ -236,27 +232,25 @@ export class RedisStorageAdapter implements StorageAdapter {
    *
    * @param logName Log name
    * @param limit Maximum number of logs to return
-   * @param namespace Optional namespace for logical isolation of data
    * @returns Logs
    */
-  public async getLogsByName(logName: string, limit: number = 100, namespace?: string): Promise<any[]> {
+  public async getLogsByName(logName: string, limit: number = 100): Promise<any[]> {
     await this.ensureInitialized();
-    const ns = namespace || this.defaultNamespace;
 
     try {
       // Get log IDs from the sorted set (newest first)
-      const logEntriesKey = this.getLogEntriesKey(ns, logName);
+      const logEntriesKey = this.getLogEntriesKey(logName);
       const logIds = await this.client.zrevrange(logEntriesKey, 0, limit - 1);
 
       if (logIds.length === 0) {
-        logger.info(`No logs found for: ${logName}, namespace: ${ns}`);
+        logger.info(`No logs found for: ${logName}, namespace: ${this.namespace}`);
         return [];
       }
 
       // Get log entries
       const pipeline = this.client.pipeline();
       for (const logId of logIds) {
-        const logKey = this.getLogKey(ns, logName, logId);
+        const logKey = this.getLogKey(logName, logId);
         pipeline.get(logKey);
       }
 
@@ -265,7 +259,7 @@ export class RedisStorageAdapter implements StorageAdapter {
         .filter(result => result && result[1])
         .map(result => JSON.parse(result[1] as string));
 
-      logger.info(`Retrieved ${entries.length} entries for log: ${logName}, namespace: ${ns}`);
+      logger.info(`Retrieved ${entries.length} entries for log: ${logName}, namespace: ${this.namespace}`);
       return entries;
     } catch (error) {
       logger.error(`Error getting logs by name: ${error instanceof Error ? error.message : String(error)}`);
@@ -277,22 +271,20 @@ export class RedisStorageAdapter implements StorageAdapter {
    * Get all log names
    *
    * @param limit Maximum number of log names to return (default: 1000)
-   * @param namespace Optional namespace for logical isolation of data
    * @returns Array of log names
    */
-  public async getLogNames(limit: number = 1000, namespace?: string): Promise<string[]> {
+  public async getLogNames(limit: number = 1000): Promise<string[]> {
     await this.ensureInitialized();
-    const ns = namespace || this.defaultNamespace;
 
     try {
       // Get log names from the set
-      const logNamesKey = this.getLogNamesKey(ns);
+      const logNamesKey = this.getLogNamesKey();
       const logNames = await this.client.smembers(logNamesKey);
 
       // Limit the number of log names if needed
       const limitedLogNames = logNames.slice(0, limit);
 
-      logger.info(`Retrieved ${limitedLogNames.length} log names, namespace: ${ns}`);
+      logger.info(`Retrieved ${limitedLogNames.length} log names, namespace: ${this.namespace}`);
       return limitedLogNames;
     } catch (error) {
       logger.error(`Error getting log names: ${error instanceof Error ? error.message : String(error)}`);
@@ -304,27 +296,25 @@ export class RedisStorageAdapter implements StorageAdapter {
    * Clear a log
    *
    * @param logName Log name
-   * @param namespace Optional namespace for logical isolation of data
    * @returns True if the log was cleared, false if it didn't exist
    */
-  public async clearLog(logName: string, namespace?: string): Promise<boolean> {
+  public async clearLog(logName: string): Promise<boolean> {
     await this.ensureInitialized();
-    const ns = namespace || this.defaultNamespace;
 
     try {
       // Get log IDs from the sorted set
-      const logEntriesKey = this.getLogEntriesKey(ns, logName);
+      const logEntriesKey = this.getLogEntriesKey(logName);
       const logIds = await this.client.zrange(logEntriesKey, 0, -1);
 
       if (logIds.length === 0) {
-        logger.info(`Log not found: ${logName}, namespace: ${ns}`);
+        logger.info(`Log not found: ${logName}, namespace: ${this.namespace}`);
         return false;
       }
 
       // Delete all log entries
       const pipeline = this.client.pipeline();
       for (const logId of logIds) {
-        const logKey = this.getLogKey(ns, logName, logId);
+        const logKey = this.getLogKey(logName, logId);
         pipeline.del(logKey);
       }
 
@@ -332,12 +322,12 @@ export class RedisStorageAdapter implements StorageAdapter {
       pipeline.del(logEntriesKey);
 
       // Remove from the log names set
-      const logNamesKey = this.getLogNamesKey(ns);
+      const logNamesKey = this.getLogNamesKey();
       pipeline.srem(logNamesKey, logName);
 
       await pipeline.exec();
 
-      logger.info(`Cleared log: ${logName}, removed ${logIds.length} entries, namespace: ${ns}`);
+      logger.info(`Cleared log: ${logName}, removed ${logIds.length} entries, namespace: ${this.namespace}`);
       return true;
     } catch (error) {
       logger.error(`Error clearing log: ${error instanceof Error ? error.message : String(error)}`);
@@ -353,7 +343,7 @@ export class RedisStorageAdapter implements StorageAdapter {
     try {
       await this.client.quit();
       this.initialized = false;
-      logger.info('Redis storage adapter closed');
+      logger.info(`Redis storage adapter closed for namespace: ${this.namespace}`);
     } catch (error) {
       logger.error(`Error closing Redis storage adapter: ${error instanceof Error ? error.message : String(error)}`);
     }
@@ -372,7 +362,6 @@ export class RedisStorageAdapter implements StorageAdapter {
     endTime?: string;
     fieldFilters?: Record<string, any>;
     limit?: number;
-    namespace?: string;
   }): Promise<Array<{logName: string; entry: any}>> {
     await this.ensureInitialized();
     const {
@@ -381,18 +370,16 @@ export class RedisStorageAdapter implements StorageAdapter {
       startTime,
       endTime,
       fieldFilters,
-      limit = 100,
-      namespace
+      limit = 100
     } = options;
 
-    const ns = namespace || this.defaultNamespace;
     let results: Array<{logName: string; entry: any}> = [];
 
     try {
       // If logName is specified, search only that log, otherwise search all logs
       if (logName) {
-        // Get entries for the specified log
-        const entries = await this.getLogEntriesWithTimeFilter(logName, startTime, endTime, limit, ns);
+        // Get entries for the specified log with time filter
+        const entries = await this.getLogEntriesWithTimeFilter(logName, startTime, endTime, limit);
 
         // Apply filters
         const filteredEntries = this.filterEntries(entries, {
@@ -407,7 +394,7 @@ export class RedisStorageAdapter implements StorageAdapter {
         }));
       } else {
         // Get all log names
-        const logNames = await this.getLogNames(1000, ns);
+        const logNames = await this.getLogNames(1000);
         let resultCount = 0;
 
         // Search through each log
@@ -415,7 +402,7 @@ export class RedisStorageAdapter implements StorageAdapter {
           if (resultCount >= limit) break;
 
           // Get entries for this log with time filter
-          const entries = await this.getLogEntriesWithTimeFilter(name, startTime, endTime, limit, ns);
+          const entries = await this.getLogEntriesWithTimeFilter(name, startTime, endTime, limit);
 
           // Apply filters
           const filteredEntries = this.filterEntries(entries, {
@@ -439,6 +426,7 @@ export class RedisStorageAdapter implements StorageAdapter {
         }
       }
 
+      logger.info(`Search returned ${results.length} results, namespace: ${this.namespace}`);
       return results;
     } catch (error) {
       logger.error(`Error searching logs: ${error instanceof Error ? error.message : String(error)}`);
@@ -453,22 +441,20 @@ export class RedisStorageAdapter implements StorageAdapter {
    * @param startTime Start time
    * @param endTime End time
    * @param limit Maximum number of entries to return
-   * @param namespace Namespace
    * @returns Log entries
    */
   private async getLogEntriesWithTimeFilter(
     logName: string,
     startTime?: string,
     endTime?: string,
-    limit: number = 100,
-    namespace: string = 'default'
+    limit: number = 100
   ): Promise<any[]> {
     // Convert times to timestamps
     const startScore = startTime ? new Date(startTime).getTime() : '-inf';
     const endScore = endTime ? new Date(endTime).getTime() : '+inf';
 
     // Get log IDs from the sorted set
-    const logEntriesKey = this.getLogEntriesKey(namespace, logName);
+    const logEntriesKey = this.getLogEntriesKey(logName);
     const logIds = await this.client.zrevrangebyscore(logEntriesKey, endScore, startScore, 'LIMIT', 0, limit);
 
     if (logIds.length === 0) {
@@ -478,7 +464,7 @@ export class RedisStorageAdapter implements StorageAdapter {
     // Get log entries
     const pipeline = this.client.pipeline();
     for (const logId of logIds) {
-      const logKey = this.getLogKey(namespace, logName, logId);
+      const logKey = this.getLogKey(logName, logId);
       pipeline.get(logKey);
     }
 
@@ -548,33 +534,30 @@ export class RedisStorageAdapter implements StorageAdapter {
   /**
    * Get the key for a log entry
    *
-   * @param namespace Namespace
    * @param logName Log name
    * @param logId Log ID
    * @returns Redis key
    */
-  private getLogKey(namespace: string, logName: string, logId: string): string {
-    return `${namespace}:logs:${logName}:${logId}`;
+  private getLogKey(logName: string, logId: string): string {
+    return `${this.namespace}:logs:${logName}:${logId}`;
   }
 
   /**
    * Get the key for log names set
    *
-   * @param namespace Namespace
    * @returns Redis key
    */
-  private getLogNamesKey(namespace: string): string {
-    return `${namespace}:lognames`;
+  private getLogNamesKey(): string {
+    return `${this.namespace}:lognames`;
   }
 
   /**
    * Get the key for log entries sorted set
    *
-   * @param namespace Namespace
    * @param logName Log name
    * @returns Redis key
    */
-  private getLogEntriesKey(namespace: string, logName: string): string {
-    return `${namespace}:logs:${logName}:entries`;
+  private getLogEntriesKey(logName: string): string {
+    return `${this.namespace}:logs:${logName}:entries`;
   }
 }

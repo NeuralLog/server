@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import logger from '../../utils/logger';
 import { StorageAdapter } from '../../storage/StorageAdapter';
 import { StorageAdapterFactory } from '../../storage/StorageAdapterFactory';
+import { NamespacedStorageAdapterFactory } from '../../storage/NamespacedStorageAdapterFactory';
 import { v4 as uuidv4 } from 'uuid';
 
 // Get configuration from environment variables
@@ -13,23 +14,20 @@ const REDIS_PORT = process.env.REDIS_PORT ? parseInt(process.env.REDIS_PORT) : 6
 const REDIS_PASSWORD = process.env.REDIS_PASSWORD;
 const REDIS_DB = process.env.REDIS_DB ? parseInt(process.env.REDIS_DB) : 0;
 
-// Create the storage adapter with appropriate configuration
-const storage: StorageAdapter = StorageAdapterFactory.createAdapter({
+// Configure storage options
+const storageOptions = {
   type: STORAGE_TYPE as 'memory' | 'nedb' | 'redis',
   dbPath: DB_PATH,
-  namespace: DEFAULT_NAMESPACE,
   redis: {
     host: REDIS_HOST,
     port: REDIS_PORT,
     password: REDIS_PASSWORD,
     db: REDIS_DB
   }
-});
+};
 
-// Initialize the storage adapter
-storage.initialize().catch(error => {
-  logger.error(`Error initializing storage adapter: ${error instanceof Error ? error.message : String(error)}`);
-});
+// Get the default storage adapter
+const storage: StorageAdapter = NamespacedStorageAdapterFactory.getAdapter(DEFAULT_NAMESPACE, storageOptions);
 
 /**
  * Generate a unique ID
@@ -109,17 +107,20 @@ export const overwriteLog = async (req: Request, res: Response): Promise<void> =
   try {
     logger.info(`Overwriting log: ${logName}, namespace: ${namespace}`);
 
+    // Get the storage adapter for this namespace
+    const namespaceStorage = NamespacedStorageAdapterFactory.getAdapter(namespace, storageOptions);
+
     // Ensure data is a proper JSON object
     const data = ensureJsonObject(rawData);
 
     // Clear the log first
-    await storage.clearLog(logName, namespace);
+    await namespaceStorage.clearLog(logName);
 
     // Generate a unique ID
     const logId = generateId();
 
     // Store the log entry
-    await storage.storeLogEntry(logId, logName, data, namespace);
+    await namespaceStorage.storeLogEntry(logId, logName, data);
 
     res.json({
       status: 'success',
@@ -146,6 +147,9 @@ export const appendToLog = async (req: Request, res: Response): Promise<void> =>
   try {
     logger.info(`Appending to log: ${logName}, namespace: ${namespace}`);
 
+    // Get the storage adapter for this namespace
+    const namespaceStorage = NamespacedStorageAdapterFactory.getAdapter(namespace, storageOptions);
+
     // Ensure data is a proper JSON object
     const data = ensureJsonObject(rawData);
 
@@ -153,7 +157,7 @@ export const appendToLog = async (req: Request, res: Response): Promise<void> =>
     const logId = generateId();
 
     // Store the log entry
-    await storage.storeLogEntry(logId, logName, data, namespace);
+    await namespaceStorage.storeLogEntry(logId, logName, data);
 
     res.json({
       status: 'success',
@@ -180,8 +184,11 @@ export const getLogByName = async (req: Request, res: Response): Promise<void> =
   try {
     logger.info(`Getting log for: ${logName}, namespace: ${namespace}`);
 
+    // Get the storage adapter for this namespace
+    const namespaceStorage = NamespacedStorageAdapterFactory.getAdapter(namespace, storageOptions);
+
     // Get logs by name
-    const entries = await storage.getLogsByName(logName, limit, namespace);
+    const entries = await namespaceStorage.getLogsByName(logName, limit);
 
     res.json({
       status: 'success',
@@ -208,8 +215,11 @@ export const getLogs = async (req: Request, res: Response): Promise<void> => {
   try {
     logger.info(`Getting all log names, namespace: ${namespace}`);
 
+    // Get the storage adapter for this namespace
+    const namespaceStorage = NamespacedStorageAdapterFactory.getAdapter(namespace, storageOptions);
+
     // Get all log names
-    const logNames = await storage.getLogNames(limit, namespace);
+    const logNames = await namespaceStorage.getLogNames(limit);
 
     res.json({
       status: 'success',
@@ -235,8 +245,11 @@ export const clearLog = async (req: Request, res: Response): Promise<void> => {
   try {
     logger.info(`Clearing log: ${logName}, namespace: ${namespace}`);
 
+    // Get the storage adapter for this namespace
+    const namespaceStorage = NamespacedStorageAdapterFactory.getAdapter(namespace, storageOptions);
+
     // Clear the log
-    const success = await storage.clearLog(logName, namespace);
+    const success = await namespaceStorage.clearLog(logName);
 
     res.json({
       status: 'success',
@@ -262,8 +275,11 @@ export const getLogEntryById = async (req: Request, res: Response): Promise<void
   try {
     logger.info(`Getting log entry: ${logName}, ID: ${logId}, namespace: ${namespace}`);
 
+    // Get the storage adapter for this namespace
+    const namespaceStorage = NamespacedStorageAdapterFactory.getAdapter(namespace, storageOptions);
+
     // Get the log entry
-    const entry = await storage.getLogEntryById(logName, logId, namespace);
+    const entry = await namespaceStorage.getLogEntryById(logName, logId);
 
     if (entry) {
       res.json({
@@ -297,11 +313,14 @@ export const updateLogEntryById = async (req: Request, res: Response): Promise<v
   try {
     logger.info(`Updating log entry: ${logName}, ID: ${logId}, namespace: ${namespace}`);
 
+    // Get the storage adapter for this namespace
+    const namespaceStorage = NamespacedStorageAdapterFactory.getAdapter(namespace, storageOptions);
+
     // Ensure data is a proper JSON object
     const data = ensureJsonObject(rawData);
 
     // Update the log entry
-    const success = await storage.updateLogEntryById(logName, logId, data, namespace);
+    const success = await namespaceStorage.updateLogEntryById(logName, logId, data);
 
     if (success) {
       res.json({
@@ -334,8 +353,11 @@ export const deleteLogEntryById = async (req: Request, res: Response): Promise<v
   try {
     logger.info(`Deleting log entry: ${logName}, ID: ${logId}, namespace: ${namespace}`);
 
+    // Get the storage adapter for this namespace
+    const namespaceStorage = NamespacedStorageAdapterFactory.getAdapter(namespace, storageOptions);
+
     // Delete the log entry
-    const success = await storage.deleteLogEntryById(logName, logId, namespace);
+    const success = await namespaceStorage.deleteLogEntryById(logName, logId);
 
     if (success) {
       res.json({
@@ -368,6 +390,9 @@ export const searchLogs = async (req: Request, res: Response): Promise<void> => 
 
     logger.info(`Searching logs with criteria: ${JSON.stringify(req.query)}, namespace: ${namespace}`);
 
+    // Get the storage adapter for this namespace
+    const namespaceStorage = NamespacedStorageAdapterFactory.getAdapter(namespace, storageOptions);
+
     // Extract search parameters from query string
     const {
       query,
@@ -392,14 +417,13 @@ export const searchLogs = async (req: Request, res: Response): Promise<void> => 
     }
 
     // Perform the search
-    const results = await storage.searchLogs({
+    const results = await namespaceStorage.searchLogs({
       query: query as string,
       logName: logName as string,
       startTime: startTime as string,
       endTime: endTime as string,
       fieldFilters: Object.keys(fieldFilters).length > 0 ? fieldFilters : undefined,
-      limit,
-      namespace
+      limit
     });
 
     // Return the results

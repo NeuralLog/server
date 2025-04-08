@@ -29,11 +29,6 @@ export interface StorageAdapterFactoryOptions {
    * Redis connection options (for Redis storage)
    */
   redis?: RedisOptions;
-
-  /**
-   * Default namespace for logical isolation of data
-   */
-  namespace?: string;
 }
 
 /**
@@ -41,41 +36,23 @@ export interface StorageAdapterFactoryOptions {
  */
 export class StorageAdapterFactory {
   /**
-   * Create a storage adapter
+   * Create a storage adapter for a specific namespace
    *
+   * @param namespace Namespace for the storage adapter
    * @param options Storage adapter factory options
    * @returns Storage adapter
    */
-  public static createAdapter(options: StorageAdapterFactoryOptions = {}): StorageAdapter {
-    const adapter = this.createAdapterInstance(options);
-
-    // Initialize with namespace if provided
-    if (options.namespace) {
-      adapter.initialize(options.namespace).catch(error => {
-        logger.error(`Error initializing storage adapter with namespace: ${error instanceof Error ? error.message : String(error)}`);
-      });
-    }
-
-    return adapter;
-  }
-
-  /**
-   * Create a storage adapter instance based on options
-   *
-   * @param options Storage adapter factory options
-   * @returns Storage adapter instance
-   */
-  private static createAdapterInstance(options: StorageAdapterFactoryOptions = {}): StorageAdapter {
+  public static createAdapter(namespace: string, options: StorageAdapterFactoryOptions = {}): StorageAdapter {
     // If Redis is specified, use Redis storage
     if (options.type === 'redis') {
-      logger.info('Using Redis storage');
-      return new RedisStorageAdapter(options.redis);
+      logger.info(`Creating Redis storage adapter for namespace: ${namespace}`);
+      return new RedisStorageAdapter(namespace, options.redis);
     }
 
     // If in-memory only, use memory storage
     if (options.inMemoryOnly || options.type === 'memory') {
-      logger.info('Using in-memory storage');
-      return new MemoryStorageAdapter();
+      logger.info(`Creating in-memory storage adapter for namespace: ${namespace}`);
+      return new MemoryStorageAdapter(namespace);
     }
 
     // If NeDB is specified and we have a db path
@@ -86,17 +63,23 @@ export class StorageAdapterFactory {
           fs.mkdirSync(options.dbPath, { recursive: true });
         }
 
-        logger.info(`Using NeDB storage at ${options.dbPath}`);
-        return new NeDBStorageAdapter(options.dbPath);
+        // Create a namespace-specific directory
+        const namespacePath = path.join(options.dbPath, namespace);
+        if (!fs.existsSync(namespacePath)) {
+          fs.mkdirSync(namespacePath, { recursive: true });
+        }
+
+        logger.info(`Creating NeDB storage adapter for namespace: ${namespace} at ${namespacePath}`);
+        return new NeDBStorageAdapter(namespace, namespacePath);
       } catch (error) {
         logger.error(`Error creating database directory: ${error instanceof Error ? error.message : String(error)}`);
-        logger.info('Falling back to in-memory storage');
-        return new MemoryStorageAdapter();
+        logger.info(`Falling back to in-memory storage for namespace: ${namespace}`);
+        return new MemoryStorageAdapter(namespace);
       }
     }
 
     // Default to in-memory storage
-    logger.info('No specific storage type configured, using in-memory storage');
-    return new MemoryStorageAdapter();
+    logger.info(`No specific storage type configured, using in-memory storage for namespace: ${namespace}`);
+    return new MemoryStorageAdapter(namespace);
   }
 }
