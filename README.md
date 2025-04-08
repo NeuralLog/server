@@ -2,6 +2,8 @@
 
 This is the server component of the NeuralLog system. It provides a RESTful API for storing and retrieving logs.
 
+> **Note:** This repository uses `main` as its default branch.
+
 ## Features
 
 - RESTful API for log management
