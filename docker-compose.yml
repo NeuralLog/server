@@ -5,7 +5,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: ai-mcp-logger-server
+    container_name: neurallog-server
     ports:
       - "3030:3030"
     volumes:
