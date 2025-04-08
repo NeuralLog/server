@@ -1,0 +1,20 @@
+version: '3.8'
+
+services:
+  server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ai-mcp-logger-server
+    ports:
+      - "3030:3030"
+    volumes:
+      - server-data:/app/data
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - PORT=3030
+
+volumes:
+  server-data:
+    driver: local
