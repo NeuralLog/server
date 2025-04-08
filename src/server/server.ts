@@ -5,9 +5,9 @@ import logger from '../utils/logger';
 import routes from './routes';
 
 /**
- * MCP server
+ * NeuralLog server
  */
-export class MCPServer {
+export class Server {
   private app: express.Application;
   private port: number;
 
@@ -43,7 +43,7 @@ export class MCPServer {
    */
   public start(): void {
     this.app.listen(this.port, () => {
-      logger.info(`MCP server listening on port ${this.port}`);
+      logger.info(`Server listening on port ${this.port}`);
     });
   }
 }
@@ -53,6 +53,6 @@ export class MCPServer {
  */
 if (require.main === module) {
   const port = process.env.PORT ? parseInt(process.env.PORT) : 3030;
-  const server = new MCPServer(port);
+  const server = new Server(port);
   server.start();
 }

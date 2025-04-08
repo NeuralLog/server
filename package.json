@@ -1,7 +1,7 @@
 {
-  "name": "ai-mcp-logger-server",
+  "name": "neurallog-server",
   "version": "1.0.0",
-  "description": "A server for the AI-MCP-Logger system with storage adapter support",
+  "description": "A server for the NeuralLog system with storage adapter support",
   "main": "dist/server.js",
   "scripts": {
     "build": "tsc",
@@ -11,16 +11,16 @@
     "dev": "nodemon --watch 'src/**/*.ts' --exec 'ts-node' src/server.ts",
     "lint": "eslint src/**/*.ts",
     "clean": "rimraf dist",
-    "docker:build": "docker build -t ai-mcp-logger-server .",
-    "docker:run": "docker run -p 3030:3030 -v ai-mcp-logger-server-data:/app/data ai-mcp-logger-server",
+    "docker:build": "docker build -t neurallog-server .",
+    "docker:run": "docker run -p 3030:3030 -v neurallog-server-data:/app/data neurallog-server",
     "docker:compose:up": "docker-compose up -d",
     "docker:compose:down": "docker-compose down",
     "docker:compose:logs": "docker-compose logs -f"
   },
   "keywords": [
-    "ai",
+    "neurallog",
     "logger",
-    "mcp",
+    "server",
     "logging",
     "storage",
     "adapter"

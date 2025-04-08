@@ -1,6 +1,6 @@
-# AI-MCP-Logger Server
+# NeuralLog Server
 
-This is the server component of the AI-MCP-Logger system. It provides a RESTful API for storing and retrieving logs.
+This is the server component of the NeuralLog system. It provides a RESTful API for storing and retrieving logs.
 
 ## Features
 
@@ -57,10 +57,10 @@ You can also run the server directly with Docker:
 
 ```bash
 # Build the Docker image
-docker build -t ai-mcp-logger-server .
+docker build -t neurallog-server .
 
 # Run the server with a persistent volume
-docker run -d -p 3030:3030 -v $(pwd)/data:/app/data --name ai-mcp-logger-server ai-mcp-logger-server
+docker run -d -p 3030:3030 -v $(pwd)/data:/app/data --name neurallog-server neurallog-server
 ```
 
 Or use the npm scripts:
@@ -83,9 +83,9 @@ The Docker setup includes:
 
 ### Docker Network
 
-When running both the server and MCP client with Docker, they need to communicate with each other. There are two approaches:
+When running both the server and client with Docker, they need to communicate with each other. There are two approaches:
 
-1. **Host Network**: Run the MCP client with `--network host` to access the server on localhost
+1. **Host Network**: Run the client with `--network host` to access the server on localhost
 2. **Docker Network**: Create a Docker network and connect both containers to it
 
 ## Environment Variables
@@ -120,7 +120,7 @@ npm run lint
 The project includes end-to-end tests that verify the entire system works correctly. These tests:
 
 1. Start the server using Docker Compose
-2. Build and run the MCP client with test input
+2. Build and run the client with test input
 3. Verify the output and functionality
 4. Clean up all Docker resources
 
@@ -153,22 +153,22 @@ This requires Docker and Docker Compose to be installed and running.
    curl http://localhost:3030/logs/test-log
    ```
 
-3. Test with the MCP client Docker container:
+3. Test with the client Docker container:
    ```bash
-   # Go to the MCP client directory
-   cd ../mcp-client
+   # Go to the client directory
+   cd ../client
 
    # Build the Docker image
-   docker build -t ai-mcp-logger-mcp-client .
+   docker build -t neurallog-client .
 
    # Test the get_logs tool
-   echo '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"get_logs","arguments":{}}}' | docker run -i --network host -e WEB_SERVER_URL=http://localhost:3030 ai-mcp-logger-mcp-client
+   echo '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"get_logs","arguments":{}}}' | docker run -i --network host -e WEB_SERVER_URL=http://localhost:3030 neurallog-client
 
    # Test appending to a log
-   echo '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"append_to_log","arguments":{"log_name":"test-log","data":{"message":"Test message","level":"info"}}}}' | docker run -i --network host -e WEB_SERVER_URL=http://localhost:3030 ai-mcp-logger-mcp-client
+   echo '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"append_to_log","arguments":{"log_name":"test-log","data":{"message":"Test message","level":"info"}}}}' | docker run -i --network host -e WEB_SERVER_URL=http://localhost:3030 neurallog-client
 
    # Test retrieving a log
-   echo '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"get_log_by_name","arguments":{"log_name":"test-log"}}}' | docker run -i --network host -e WEB_SERVER_URL=http://localhost:3030 ai-mcp-logger-mcp-client
+   echo '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"get_log_by_name","arguments":{"log_name":"test-log"}}}' | docker run -i --network host -e WEB_SERVER_URL=http://localhost:3030 neurallog-client
    ```
 
 #### Complete End-to-End Test Workflow
@@ -180,30 +180,30 @@ Here's a complete workflow for testing both components with Docker:
 cd server
 docker-compose up -d
 
-# 2. Build the MCP client
-cd ../mcp-client
-docker build -t ai-mcp-logger-mcp-client .
+# 2. Build the client
+cd ../client
+docker build -t neurallog-client .
 
 # 3. Test the workflow
 
 # First, check that there are no logs
-echo '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"get_logs","arguments":{}}}' | docker run -i --network host -e WEB_SERVER_URL=http://localhost:3030 ai-mcp-logger-mcp-client
+echo '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"get_logs","arguments":{}}}' | docker run -i --network host -e WEB_SERVER_URL=http://localhost:3030 neurallog-client
 
 # Create a log with a JSON object
-echo '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"append_to_log","arguments":{"log_name":"test-object","data":{"message":"Test message","level":"info"}}}}' | docker run -i --network host -e WEB_SERVER_URL=http://localhost:3030 ai-mcp-logger-mcp-client
+echo '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"append_to_log","arguments":{"log_name":"test-object","data":{"message":"Test message","level":"info"}}}}' | docker run -i --network host -e WEB_SERVER_URL=http://localhost:3030 neurallog-client
 
 # Create a log with a primitive value (properly wrapped)
-echo '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"append_to_log","arguments":{"log_name":"test-primitive","data":{"data":"This is a test string"}}}}' | docker run -i --network host -e WEB_SERVER_URL=http://localhost:3030 ai-mcp-logger-mcp-client
+echo '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"append_to_log","arguments":{"log_name":"test-primitive","data":{"data":"This is a test string"}}}}' | docker run -i --network host -e WEB_SERVER_URL=http://localhost:3030 neurallog-client
 
 # Retrieve the logs
-echo '{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"get_logs","arguments":{}}}' | docker run -i --network host -e WEB_SERVER_URL=http://localhost:3030 ai-mcp-logger-mcp-client
+echo '{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"get_logs","arguments":{}}}' | docker run -i --network host -e WEB_SERVER_URL=http://localhost:3030 neurallog-client
 
 # Search for logs containing "Test"
-echo '{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"search","arguments":{"query":"Test"}}}' | docker run -i --network host -e WEB_SERVER_URL=http://localhost:3030 ai-mcp-logger-mcp-client
+echo '{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"search","arguments":{"query":"Test"}}}' | docker run -i --network host -e WEB_SERVER_URL=http://localhost:3030 neurallog-client
 
 # Clean up
-echo '{"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"clear_log","arguments":{"log_name":"test-object"}}}' | docker run -i --network host -e WEB_SERVER_URL=http://localhost:3030 ai-mcp-logger-mcp-client
-echo '{"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"clear_log","arguments":{"log_name":"test-primitive"}}}' | docker run -i --network host -e WEB_SERVER_URL=http://localhost:3030 ai-mcp-logger-mcp-client
+echo '{"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"clear_log","arguments":{"log_name":"test-object"}}}' | docker run -i --network host -e WEB_SERVER_URL=http://localhost:3030 neurallog-client
+echo '{"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"clear_log","arguments":{"log_name":"test-primitive"}}}' | docker run -i --network host -e WEB_SERVER_URL=http://localhost:3030 neurallog-client
 ```
 
 ## Data Handling
