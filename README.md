@@ -1,8 +1,38 @@
 # NeuralLog Server
 
-This is the server component of the NeuralLog system. It provides a RESTful API for storing and retrieving logs.
+The central server component of the NeuralLog intelligent logging system. This server provides RESTful APIs for log management and storage, forming the foundation of the NeuralLog ecosystem.
 
 > **Note:** This repository uses `main` as its default branch.
+
+## Overview
+
+NeuralLog is an intelligent logging system with automated action capabilities. It captures log events from various sources, analyzes patterns in those logs, and triggers configurable actions when specific conditions are met. The server component is responsible for:
+
+- Receiving and storing logs from various clients
+- Providing APIs for log retrieval and management
+- Supporting the storage layer of the NeuralLog architecture
+- Enabling integration with the MCP (Model Context Protocol) ecosystem
+
+## Architecture
+
+The NeuralLog server is part of a larger ecosystem as defined in the [NeuralLog specifications](https://github.com/NeuralLog/specs):
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                     NeuralLog System                        │
+│                                                             │
+│  ┌─────────────┐  ┌─────────────────────┐  ┌─────────────┐  │
+│  │ NeuralLog   │  │ MCP Server          │  │ NeuralLog   │  │
+│  │ Core        │◄─┤                     │◄─┤ MCP Clients │  │
+│  │ Services    │  │ • Tool Registry     │  │             │  │
+│  │             │  │ • Connection Mgmt   │  │ • TypeScript│  │
+│  │ • Logging   │  │ • Authentication    │  │ • Unity     │  │
+│  │ • Analysis  │  │ • Transport Layer   │  │ • Python    │  │
+│  │ • Actions   │  │ • Request Handling  │  │ • Others    │  │
+│  └─────────────┘  └─────────────────────┘  └─────────────┘  │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
 
 ## Features
 
@@ -10,8 +40,12 @@ This is the server component of the NeuralLog system. It provides a RESTful API 
 - Support for multiple storage adapters (Memory, NeDB)
 - Persistent storage with Docker volumes
 - Comprehensive search capabilities
+- Integration with MCP clients
+- Multi-tenant support (in progress)
 
 ## API Endpoints
+
+### Log Management
 
 - `GET /logs`: Get all log names
 - `GET /logs/:logName`: Get entries for a specific log
@@ -21,6 +55,9 @@ This is the server component of the NeuralLog system. It provides a RESTful API 
 - `GET /logs/:logName/:logId`: Get a specific log entry
 - `POST /logs/:logName/:logId`: Update a specific log entry
 - `DELETE /logs/:logName/:logId`: Delete a specific log entry
+
+### Search
+
 - `GET /search`: Search logs with various criteria
 
 ## Running with Docker
@@ -222,6 +259,23 @@ The server handles JSON data in the following ways:
 3. **JSON-like Strings**: Strings that look like JSON but aren't valid JSON are treated as regular strings and wrapped in a `data` field.
 
 This ensures that all data is stored as JSON objects in a consistent format, making it easier to work with the data programmatically.
+
+## Related Repositories
+
+- [NeuralLog Specifications](https://github.com/NeuralLog/specs) - Technical specifications for the NeuralLog system
+- [NeuralLog MCP Client](https://github.com/NeuralLog/mcp-client) - Model Context Protocol client for AI integration
+- [NeuralLog TypeScript Client](https://github.com/NeuralLog/typescript) - TypeScript client for NeuralLog
+- [NeuralLog Unity Client](https://github.com/NeuralLog/unity) - Unity client for NeuralLog
+
+## Future Development
+
+The NeuralLog server is under active development with the following features planned:
+
+- Advanced pattern detection and analysis
+- Rule-based action system
+- Multi-tenant support with complete isolation
+- Enhanced security features
+- Scalable architecture for high-volume logging
 
 ## License
 
