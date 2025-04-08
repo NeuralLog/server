@@ -14,7 +14,25 @@ services:
     environment:
       - NODE_ENV=production
       - PORT=3030
+      - STORAGE_TYPE=redis
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - DEFAULT_NAMESPACE=default
+    depends_on:
+      - redis
+
+  redis:
+    image: redis:7.0-alpine
+    container_name: neurallog-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    restart: unless-stopped
+    command: redis-server --appendonly yes
 
 volumes:
   server-data:
+    driver: local
+  redis-data:
     driver: local

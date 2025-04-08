@@ -5,8 +5,10 @@ import logger from '../utils/logger';
  * Memory storage adapter for storing log entries
  */
 export class MemoryStorageAdapter implements StorageAdapter {
-  private logs: Map<string, any[]> = new Map();
+  // Map of namespaces to logs
+  private namespaces: Map<string, Map<string, any[]>> = new Map();
   private initialized: boolean = false;
+  private defaultNamespace: string = 'default';
 
   /**
    * Get the results database name
@@ -17,9 +19,21 @@ export class MemoryStorageAdapter implements StorageAdapter {
 
   /**
    * Initialize the storage adapter
+   *
+   * @param namespace Optional namespace for logical isolation of data
    */
-  public async initialize(): Promise<void> {
+  public async initialize(namespace?: string): Promise<void> {
+    if (namespace) {
+      this.defaultNamespace = namespace;
+    }
+
+    // Ensure the default namespace exists
+    if (!this.namespaces.has(this.defaultNamespace)) {
+      this.namespaces.set(this.defaultNamespace, new Map());
+    }
+
     this.initialized = true;
+    logger.info(`Memory storage adapter initialized with namespace: ${this.defaultNamespace}`);
   }
 
   /**
@@ -28,9 +42,20 @@ export class MemoryStorageAdapter implements StorageAdapter {
    * @param logId Log ID
    * @param logName Log name
    * @param logEntry Log entry
+   * @param namespace Optional namespace for logical isolation of data
    */
-  public async storeLogEntry(logId: string, logName: string, logEntry: any): Promise<void> {
+  public async storeLogEntry(logId: string, logName: string, logEntry: any, namespace?: string): Promise<void> {
     try {
+      const ns = namespace || this.defaultNamespace;
+
+      // Ensure the namespace exists
+      if (!this.namespaces.has(ns)) {
+        this.namespaces.set(ns, new Map());
+      }
+
+      // Get the logs for this namespace
+      const logs = this.namespaces.get(ns)!;
+
       // Create the log entry
       const entry = {
         id: logId,
@@ -40,15 +65,15 @@ export class MemoryStorageAdapter implements StorageAdapter {
       };
 
       // Get or create the log array
-      if (!this.logs.has(logName)) {
-        this.logs.set(logName, []);
+      if (!logs.has(logName)) {
+        logs.set(logName, []);
       }
 
       // Add the entry to the log
-      const logEntries = this.logs.get(logName)!;
+      const logEntries = logs.get(logName)!;
       logEntries.push(entry);
 
-      logger.info(`Stored log entry: ${logName}, ID: ${logId}`);
+      logger.info(`Stored log entry: ${logName}, ID: ${logId}, namespace: ${ns}`);
     } catch (error) {
       logger.error(`Error storing log entry: ${error instanceof Error ? error.message : String(error)}`);
       throw error;
@@ -60,21 +85,33 @@ export class MemoryStorageAdapter implements StorageAdapter {
    *
    * @param logName Log name
    * @param logId Log ID
+   * @param namespace Optional namespace for logical isolation of data
    * @returns Log entry or null if not found
    */
-  public async getLogEntryById(logName: string, logId: string): Promise<any | null> {
+  public async getLogEntryById(logName: string, logId: string, namespace?: string): Promise<any | null> {
     try {
+      const ns = namespace || this.defaultNamespace;
+
+      // Check if the namespace exists
+      if (!this.namespaces.has(ns)) {
+        logger.info(`Namespace not found: ${ns}`);
+        return null;
+      }
+
+      // Get the logs for this namespace
+      const logs = this.namespaces.get(ns)!;
+
       // Get the log entries
-      const logEntries = this.logs.get(logName) || [];
+      const logEntries = logs.get(logName) || [];
 
       // Find the entry with the specified ID
       const entry = logEntries.find(entry => entry.id === logId);
 
       if (entry) {
-        logger.info(`Retrieved log entry: ${logName}, ID: ${logId}`);
+        logger.info(`Retrieved log entry: ${logName}, ID: ${logId}, namespace: ${ns}`);
         return entry;
       } else {
-        logger.info(`Log entry not found: ${logName}, ID: ${logId}`);
+        logger.info(`Log entry not found: ${logName}, ID: ${logId}, namespace: ${ns}`);
         return null;
       }
     } catch (error) {
@@ -89,18 +126,30 @@ export class MemoryStorageAdapter implements StorageAdapter {
    * @param logName Log name
    * @param logId Log ID
    * @param logEntry Log entry
+   * @param namespace Optional namespace for logical isolation of data
    * @returns True if the log entry was updated, false if it didn't exist
    */
-  public async updateLogEntryById(logName: string, logId: string, logEntry: any): Promise<boolean> {
+  public async updateLogEntryById(logName: string, logId: string, logEntry: any, namespace?: string): Promise<boolean> {
     try {
+      const ns = namespace || this.defaultNamespace;
+
+      // Check if the namespace exists
+      if (!this.namespaces.has(ns)) {
+        logger.info(`Namespace not found: ${ns}`);
+        return false;
+      }
+
+      // Get the logs for this namespace
+      const logs = this.namespaces.get(ns)!;
+
       // Get the log entries
-      const logEntries = this.logs.get(logName) || [];
+      const logEntries = logs.get(logName) || [];
 
       // Find the index of the entry with the specified ID
       const index = logEntries.findIndex(entry => entry.id === logId);
 
       if (index === -1) {
-        logger.info(`Log entry not found for update: ${logName}, ID: ${logId}`);
+        logger.info(`Log entry not found for update: ${logName}, ID: ${logId}, namespace: ${ns}`);
         return false;
       }
 
@@ -111,7 +160,7 @@ export class MemoryStorageAdapter implements StorageAdapter {
         timestamp: new Date().toISOString()
       };
 
-      logger.info(`Updated log entry: ${logName}, ID: ${logId}`);
+      logger.info(`Updated log entry: ${logName}, ID: ${logId}, namespace: ${ns}`);
       return true;
     } catch (error) {
       logger.error(`Error updating log entry: ${error instanceof Error ? error.message : String(error)}`);
@@ -124,25 +173,37 @@ export class MemoryStorageAdapter implements StorageAdapter {
    *
    * @param logName Log name
    * @param logId Log ID
+   * @param namespace Optional namespace for logical isolation of data
    * @returns True if the log entry was deleted, false if it didn't exist
    */
-  public async deleteLogEntryById(logName: string, logId: string): Promise<boolean> {
+  public async deleteLogEntryById(logName: string, logId: string, namespace?: string): Promise<boolean> {
     try {
+      const ns = namespace || this.defaultNamespace;
+
+      // Check if the namespace exists
+      if (!this.namespaces.has(ns)) {
+        logger.info(`Namespace not found: ${ns}`);
+        return false;
+      }
+
+      // Get the logs for this namespace
+      const logs = this.namespaces.get(ns)!;
+
       // Get the log entries
-      const logEntries = this.logs.get(logName) || [];
+      const logEntries = logs.get(logName) || [];
 
       // Find the index of the entry with the specified ID
       const index = logEntries.findIndex(entry => entry.id === logId);
 
       if (index === -1) {
-        logger.info(`Log entry not found for deletion: ${logName}, ID: ${logId}`);
+        logger.info(`Log entry not found for deletion: ${logName}, ID: ${logId}, namespace: ${ns}`);
         return false;
       }
 
       // Remove the entry
       logEntries.splice(index, 1);
 
-      logger.info(`Deleted log entry: ${logName}, ID: ${logId}`);
+      logger.info(`Deleted log entry: ${logName}, ID: ${logId}, namespace: ${ns}`);
       return true;
     } catch (error) {
       logger.error(`Error deleting log entry: ${error instanceof Error ? error.message : String(error)}`);
@@ -155,19 +216,31 @@ export class MemoryStorageAdapter implements StorageAdapter {
    *
    * @param logName Log name
    * @param limit Maximum number of logs to return
+   * @param namespace Optional namespace for logical isolation of data
    * @returns Logs
    */
-  public async getLogsByName(logName: string, limit: number = 100): Promise<any[]> {
+  public async getLogsByName(logName: string, limit: number = 100, namespace?: string): Promise<any[]> {
     try {
+      const ns = namespace || this.defaultNamespace;
+
+      // Check if the namespace exists
+      if (!this.namespaces.has(ns)) {
+        logger.info(`Namespace not found: ${ns}`);
+        return [];
+      }
+
+      // Get the logs for this namespace
+      const logs = this.namespaces.get(ns)!;
+
       // Get the log entries
-      const logEntries = this.logs.get(logName) || [];
+      const logEntries = logs.get(logName) || [];
 
       // Sort by timestamp (newest first) and limit the number of entries
       const sortedEntries = [...logEntries]
         .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
         .slice(0, limit);
 
-      logger.info(`Retrieved ${sortedEntries.length} entries for log: ${logName}`);
+      logger.info(`Retrieved ${sortedEntries.length} entries for log: ${logName}, namespace: ${ns}`);
       return sortedEntries;
     } catch (error) {
       logger.error(`Error getting logs by name: ${error instanceof Error ? error.message : String(error)}`);
@@ -179,17 +252,29 @@ export class MemoryStorageAdapter implements StorageAdapter {
    * Get all log names
    *
    * @param limit Maximum number of log names to return (default: 1000)
+   * @param namespace Optional namespace for logical isolation of data
    * @returns Array of log names
    */
-  public async getLogNames(limit: number = 1000): Promise<string[]> {
+  public async getLogNames(limit: number = 1000, namespace?: string): Promise<string[]> {
     try {
+      const ns = namespace || this.defaultNamespace;
+
+      // Check if the namespace exists
+      if (!this.namespaces.has(ns)) {
+        logger.info(`Namespace not found: ${ns}`);
+        return [];
+      }
+
+      // Get the logs for this namespace
+      const logs = this.namespaces.get(ns)!;
+
       // Get all log names
-      const logNames = Array.from(this.logs.keys());
+      const logNames = Array.from(logs.keys());
 
       // Limit the number of log names if needed
       const limitedLogNames = logNames.slice(0, limit);
 
-      logger.info(`Retrieved ${limitedLogNames.length} log names`);
+      logger.info(`Retrieved ${limitedLogNames.length} log names, namespace: ${ns}`);
       return limitedLogNames;
     } catch (error) {
       logger.error(`Error getting log names: ${error instanceof Error ? error.message : String(error)}`);
@@ -201,20 +286,32 @@ export class MemoryStorageAdapter implements StorageAdapter {
    * Clear a log
    *
    * @param logName Log name
+   * @param namespace Optional namespace for logical isolation of data
    * @returns True if the log was cleared, false if it didn't exist
    */
-  public async clearLog(logName: string): Promise<boolean> {
+  public async clearLog(logName: string, namespace?: string): Promise<boolean> {
     try {
+      const ns = namespace || this.defaultNamespace;
+
+      // Check if the namespace exists
+      if (!this.namespaces.has(ns)) {
+        logger.info(`Namespace not found: ${ns}`);
+        return false;
+      }
+
+      // Get the logs for this namespace
+      const logs = this.namespaces.get(ns)!;
+
       // Check if the log exists
-      if (!this.logs.has(logName)) {
-        logger.info(`Log not found: ${logName}`);
+      if (!logs.has(logName)) {
+        logger.info(`Log not found: ${logName}, namespace: ${ns}`);
         return false;
       }
 
       // Clear the log
-      this.logs.delete(logName);
+      logs.delete(logName);
 
-      logger.info(`Cleared log: ${logName}`);
+      logger.info(`Cleared log: ${logName}, namespace: ${ns}`);
       return true;
     } catch (error) {
       logger.error(`Error clearing log: ${error instanceof Error ? error.message : String(error)}`);
@@ -243,6 +340,7 @@ export class MemoryStorageAdapter implements StorageAdapter {
     endTime?: string;
     fieldFilters?: Record<string, any>;
     limit?: number;
+    namespace?: string;
   }): Promise<Array<{logName: string; entry: any}>> {
     const {
       query,
@@ -250,8 +348,17 @@ export class MemoryStorageAdapter implements StorageAdapter {
       startTime,
       endTime,
       fieldFilters,
-      limit = 100
+      limit = 100,
+      namespace
     } = options;
+
+    const ns = namespace || this.defaultNamespace;
+
+    // Check if the namespace exists
+    if (!this.namespaces.has(ns)) {
+      logger.info(`Namespace not found for search: ${ns}`);
+      return [];
+    }
 
     let results: Array<{logName: string; entry: any}> = [];
     let resultCount = 0;
@@ -259,7 +366,7 @@ export class MemoryStorageAdapter implements StorageAdapter {
     // If logName is specified, search only that log, otherwise search all logs
     if (logName) {
       // Get entries for the specified log
-      const entries = await this.getLogsByName(logName, 1000);
+      const entries = await this.getLogsByName(logName, 1000, ns);
 
       // Apply filters
       const filteredEntries = this.filterEntries(entries, {
@@ -277,14 +384,14 @@ export class MemoryStorageAdapter implements StorageAdapter {
       }));
     } else {
       // Get all log names
-      const logNames = await this.getLogNames();
+      const logNames = await this.getLogNames(1000, ns);
 
       // Search through each log
       for (const name of logNames) {
         if (resultCount >= limit) break;
 
         // Get entries for this log
-        const entries = await this.getLogsByName(name, 1000);
+        const entries = await this.getLogsByName(name, 1000, ns);
 
         // Apply filters
         const filteredEntries = this.filterEntries(entries, {
@@ -310,6 +417,7 @@ export class MemoryStorageAdapter implements StorageAdapter {
       }
     }
 
+    logger.info(`Search returned ${results.length} results, namespace: ${ns}`);
     return results;
   }
 

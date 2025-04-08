@@ -4,8 +4,27 @@ import { StorageAdapter } from '../../storage/StorageAdapter';
 import { StorageAdapterFactory } from '../../storage/StorageAdapterFactory';
 import { v4 as uuidv4 } from 'uuid';
 
-// Create the storage adapter
-const storage: StorageAdapter = StorageAdapterFactory.createAdapter();
+// Get configuration from environment variables
+const DEFAULT_NAMESPACE = process.env.DEFAULT_NAMESPACE || 'default';
+const STORAGE_TYPE = process.env.STORAGE_TYPE || 'memory';
+const DB_PATH = process.env.DB_PATH || './data';
+const REDIS_HOST = process.env.REDIS_HOST || 'localhost';
+const REDIS_PORT = process.env.REDIS_PORT ? parseInt(process.env.REDIS_PORT) : 6379;
+const REDIS_PASSWORD = process.env.REDIS_PASSWORD;
+const REDIS_DB = process.env.REDIS_DB ? parseInt(process.env.REDIS_DB) : 0;
+
+// Create the storage adapter with appropriate configuration
+const storage: StorageAdapter = StorageAdapterFactory.createAdapter({
+  type: STORAGE_TYPE as 'memory' | 'nedb' | 'redis',
+  dbPath: DB_PATH,
+  namespace: DEFAULT_NAMESPACE,
+  redis: {
+    host: REDIS_HOST,
+    port: REDIS_PORT,
+    password: REDIS_PASSWORD,
+    db: REDIS_DB
+  }
+});
 
 // Initialize the storage adapter
 storage.initialize().catch(error => {
@@ -85,25 +104,27 @@ function ensureJsonObject(data: any): any {
 export const overwriteLog = async (req: Request, res: Response): Promise<void> => {
   const { logName } = req.params;
   const rawData = req.body;
+  const namespace = req.query.namespace as string || DEFAULT_NAMESPACE;
 
   try {
-    logger.info(`Overwriting log: ${logName}`);
+    logger.info(`Overwriting log: ${logName}, namespace: ${namespace}`);
 
     // Ensure data is a proper JSON object
     const data = ensureJsonObject(rawData);
 
     // Clear the log first
-    await storage.clearLog(logName);
+    await storage.clearLog(logName, namespace);
 
     // Generate a unique ID
     const logId = generateId();
 
     // Store the log entry
-    await storage.storeLogEntry(logId, logName, data);
+    await storage.storeLogEntry(logId, logName, data, namespace);
 
     res.json({
       status: 'success',
-      logId
+      logId,
+      namespace
     });
   } catch (error) {
     logger.error(`Error overwriting log: ${error instanceof Error ? error.message : String(error)}`);
@@ -120,9 +141,10 @@ export const overwriteLog = async (req: Request, res: Response): Promise<void> =
 export const appendToLog = async (req: Request, res: Response): Promise<void> => {
   const { logName } = req.params;
   const rawData = req.body;
+  const namespace = req.query.namespace as string || DEFAULT_NAMESPACE;
 
   try {
-    logger.info(`Appending to log: ${logName}`);
+    logger.info(`Appending to log: ${logName}, namespace: ${namespace}`);
 
     // Ensure data is a proper JSON object
     const data = ensureJsonObject(rawData);
@@ -131,11 +153,12 @@ export const appendToLog = async (req: Request, res: Response): Promise<void> =>
     const logId = generateId();
 
     // Store the log entry
-    await storage.storeLogEntry(logId, logName, data);
+    await storage.storeLogEntry(logId, logName, data, namespace);
 
     res.json({
       status: 'success',
-      logId
+      logId,
+      namespace
     });
   } catch (error) {
     logger.error(`Error appending to log: ${error instanceof Error ? error.message : String(error)}`);
@@ -152,16 +175,18 @@ export const appendToLog = async (req: Request, res: Response): Promise<void> =>
 export const getLogByName = async (req: Request, res: Response): Promise<void> => {
   const { logName } = req.params;
   const limit = req.query.limit ? parseInt(req.query.limit as string) : 100;
+  const namespace = req.query.namespace as string || DEFAULT_NAMESPACE;
 
   try {
-    logger.info(`Getting log for: ${logName}`);
+    logger.info(`Getting log for: ${logName}, namespace: ${namespace}`);
 
     // Get logs by name
-    const entries = await storage.getLogsByName(logName, limit);
+    const entries = await storage.getLogsByName(logName, limit, namespace);
 
     res.json({
       status: 'success',
       name: logName,
+      namespace,
       entries
     });
   } catch (error) {
@@ -178,15 +203,17 @@ export const getLogByName = async (req: Request, res: Response): Promise<void> =
  */
 export const getLogs = async (req: Request, res: Response): Promise<void> => {
   const limit = req.query.limit ? parseInt(req.query.limit as string) : 1000;
+  const namespace = req.query.namespace as string || DEFAULT_NAMESPACE;
 
   try {
-    logger.info('Getting all log names');
+    logger.info(`Getting all log names, namespace: ${namespace}`);
 
     // Get all log names
-    const logNames = await storage.getLogNames(limit);
+    const logNames = await storage.getLogNames(limit, namespace);
 
     res.json({
       status: 'success',
+      namespace,
       logs: logNames
     });
   } catch (error) {
@@ -203,15 +230,17 @@ export const getLogs = async (req: Request, res: Response): Promise<void> => {
  */
 export const clearLog = async (req: Request, res: Response): Promise<void> => {
   const { logName } = req.params;
+  const namespace = req.query.namespace as string || DEFAULT_NAMESPACE;
 
   try {
-    logger.info(`Clearing log: ${logName}`);
+    logger.info(`Clearing log: ${logName}, namespace: ${namespace}`);
 
     // Clear the log
-    const success = await storage.clearLog(logName);
+    const success = await storage.clearLog(logName, namespace);
 
     res.json({
       status: 'success',
+      namespace,
       cleared: success
     });
   } catch (error) {
@@ -228,22 +257,24 @@ export const clearLog = async (req: Request, res: Response): Promise<void> => {
  */
 export const getLogEntryById = async (req: Request, res: Response): Promise<void> => {
   const { logName, logId } = req.params;
+  const namespace = req.query.namespace as string || DEFAULT_NAMESPACE;
 
   try {
-    logger.info(`Getting log entry: ${logName}, ID: ${logId}`);
+    logger.info(`Getting log entry: ${logName}, ID: ${logId}, namespace: ${namespace}`);
 
     // Get the log entry
-    const entry = await storage.getLogEntryById(logName, logId);
+    const entry = await storage.getLogEntryById(logName, logId, namespace);
 
     if (entry) {
       res.json({
         status: 'success',
+        namespace,
         entry
       });
     } else {
       res.status(404).json({
         status: 'error',
-        error: `Log entry ${logId} not found in log ${logName}`
+        error: `Log entry ${logId} not found in log ${logName} (namespace: ${namespace})`
       });
     }
   } catch (error) {
@@ -261,25 +292,27 @@ export const getLogEntryById = async (req: Request, res: Response): Promise<void
 export const updateLogEntryById = async (req: Request, res: Response): Promise<void> => {
   const { logName, logId } = req.params;
   const rawData = req.body;
+  const namespace = req.query.namespace as string || DEFAULT_NAMESPACE;
 
   try {
-    logger.info(`Updating log entry: ${logName}, ID: ${logId}`);
+    logger.info(`Updating log entry: ${logName}, ID: ${logId}, namespace: ${namespace}`);
 
     // Ensure data is a proper JSON object
     const data = ensureJsonObject(rawData);
 
     // Update the log entry
-    const success = await storage.updateLogEntryById(logName, logId, data);
+    const success = await storage.updateLogEntryById(logName, logId, data, namespace);
 
     if (success) {
       res.json({
         status: 'success',
+        namespace,
         message: `Log entry ${logId} updated in log ${logName}`
       });
     } else {
       res.status(404).json({
         status: 'error',
-        error: `Log entry ${logId} not found in log ${logName}`
+        error: `Log entry ${logId} not found in log ${logName} (namespace: ${namespace})`
       });
     }
   } catch (error) {
@@ -296,22 +329,24 @@ export const updateLogEntryById = async (req: Request, res: Response): Promise<v
  */
 export const deleteLogEntryById = async (req: Request, res: Response): Promise<void> => {
   const { logName, logId } = req.params;
+  const namespace = req.query.namespace as string || DEFAULT_NAMESPACE;
 
   try {
-    logger.info(`Deleting log entry: ${logName}, ID: ${logId}`);
+    logger.info(`Deleting log entry: ${logName}, ID: ${logId}, namespace: ${namespace}`);
 
     // Delete the log entry
-    const success = await storage.deleteLogEntryById(logName, logId);
+    const success = await storage.deleteLogEntryById(logName, logId, namespace);
 
     if (success) {
       res.json({
         status: 'success',
+        namespace,
         message: `Log entry ${logId} deleted from log ${logName}`
       });
     } else {
       res.status(404).json({
         status: 'error',
-        error: `Log entry ${logId} not found in log ${logName}`
+        error: `Log entry ${logId} not found in log ${logName} (namespace: ${namespace})`
       });
     }
   } catch (error) {
@@ -328,7 +363,10 @@ export const deleteLogEntryById = async (req: Request, res: Response): Promise<v
  */
 export const searchLogs = async (req: Request, res: Response): Promise<void> => {
   try {
-    logger.info(`Searching logs with criteria: ${JSON.stringify(req.query)}`);
+    // Extract namespace parameter
+    const namespace = req.query.namespace as string || DEFAULT_NAMESPACE;
+
+    logger.info(`Searching logs with criteria: ${JSON.stringify(req.query)}, namespace: ${namespace}`);
 
     // Extract search parameters from query string
     const {
@@ -337,6 +375,7 @@ export const searchLogs = async (req: Request, res: Response): Promise<void> => 
       start_time: startTime,
       end_time: endTime,
       limit: limitStr,
+      namespace: _, // Exclude namespace from otherParams
       ...otherParams
     } = req.query;
 
@@ -359,12 +398,14 @@ export const searchLogs = async (req: Request, res: Response): Promise<void> => 
       startTime: startTime as string,
       endTime: endTime as string,
       fieldFilters: Object.keys(fieldFilters).length > 0 ? fieldFilters : undefined,
-      limit
+      limit,
+      namespace
     });
 
     // Return the results
     res.json({
       status: 'success',
+      namespace,
       total: results.length,
       results
     });
