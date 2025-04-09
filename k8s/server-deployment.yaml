@@ -1,24 +1,21 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: neurallog-server-nedb
+  name: neurallog-server
   labels:
     app: neurallog
     component: server
-    storage: nedb
 spec:
   replicas: 1
   selector:
     matchLabels:
       app: neurallog
       component: server
-      storage: nedb
   template:
     metadata:
       labels:
         app: neurallog
         component: server
-        storage: nedb
     spec:
       containers:
       - name: server
@@ -43,11 +40,34 @@ spec:
               name: neurallog-config
               key: DEFAULT_NAMESPACE
         - name: STORAGE_TYPE
-          value: "nedb"
+          valueFrom:
+            configMapKeyRef:
+              name: neurallog-config
+              key: STORAGE_TYPE
+        # Redis configuration (only used when STORAGE_TYPE=redis)
+        - name: REDIS_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: neurallog-config
+              key: REDIS_HOST
+              optional: true
+        - name: REDIS_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: neurallog-config
+              key: REDIS_PORT
+              optional: true
+        - name: REDIS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: neurallog-secrets
+              key: REDIS_PASSWORD
+              optional: true
+        # NeDB configuration (only used when STORAGE_TYPE=nedb)
         - name: DB_PATH
           value: "/app/data"
         volumeMounts:
-        - name: nedb-data
+        - name: server-data
           mountPath: /app/data
         resources:
           requests:
@@ -57,18 +77,17 @@ spec:
             cpu: 500m
             memory: 512Mi
       volumes:
-      - name: nedb-data
+      - name: server-data
         persistentVolumeClaim:
-          claimName: neurallog-nedb-pvc
+          claimName: neurallog-server-pvc
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: neurallog-server-nedb
+  name: neurallog-server
   labels:
     app: neurallog
     component: server
-    storage: nedb
 spec:
   ports:
   - port: 80
@@ -77,12 +96,11 @@ spec:
   selector:
     app: neurallog
     component: server
-    storage: nedb
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: neurallog-nedb-pvc
+  name: neurallog-server-pvc
 spec:
   accessModes:
     - ReadWriteOnce

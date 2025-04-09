@@ -2,11 +2,13 @@
 
 This directory contains Kubernetes configuration files for deploying NeuralLog server with different storage backends.
 
-## Available Deployments
+## Storage Options
 
-- **Redis Storage**: Uses Redis as the storage backend
-- **NeDB Storage**: Uses NeDB (file-based) as the storage backend
-- **Memory Storage**: Uses in-memory storage (data is lost when the pod restarts)
+The NeuralLog server supports three storage backends, which can be configured using the `STORAGE_TYPE` environment variable:
+
+- **Redis Storage** (`STORAGE_TYPE=redis`): Uses Redis as the storage backend (recommended for production)
+- **NeDB Storage** (`STORAGE_TYPE=nedb`): Uses NeDB (file-based) as the storage backend
+- **Memory Storage** (`STORAGE_TYPE=memory`): Uses in-memory storage (data is lost when the pod restarts)
 
 ## Prerequisites
 
@@ -26,27 +28,29 @@ docker push neurallog/server:latest  # Replace with your image repository
 
 ### 2. Update the image repository
 
-Edit the deployment files to use your image repository:
+Edit the server-deployment.yaml file to use your image repository.
 
-- server-redis-deployment.yaml
-- server-nedb-deployment.yaml
-- server-memory-deployment.yaml
+### 3. Configure the storage type
 
-### 3. Deploy using kustomize
+Edit the configmap.yaml file to set the desired storage type:
+
+```yaml
+STORAGE_TYPE: "redis"   # Options: "redis", "nedb", or "memory"
+```
+
+### 4. Deploy using kustomize
 
 ```bash
 kubectl apply -k .
 ```
 
-### 4. Access the services
+### 5. Access the service
 
-The services are exposed through the Ingress on the following hosts:
+The service is exposed through the Ingress on the following host:
 
-- Redis storage: http://redis.neurallog.local
-- NeDB storage: http://nedb.neurallog.local
-- Memory storage: http://memory.neurallog.local
+- http://neurallog.local
 
-Update your hosts file or DNS configuration to point these domains to your Ingress controller's IP address.
+Update your hosts file or DNS configuration to point this domain to your Ingress controller's IP address.
 
 ## Configuration
 
@@ -57,12 +61,13 @@ The following environment variables can be configured in the ConfigMap:
 - `NODE_ENV`: Node.js environment (default: production)
 - `PORT`: Port the server listens on (default: 3030)
 - `DEFAULT_NAMESPACE`: Default namespace for storage (default: default)
-- `REDIS_HOST`: Redis host (default: neurallog-redis)
-- `REDIS_PORT`: Redis port (default: 6379)
+- `STORAGE_TYPE`: Storage backend to use (options: redis, nedb, memory)
+- `REDIS_HOST`: Redis host (default: neurallog-redis, only used when STORAGE_TYPE=redis)
+- `REDIS_PORT`: Redis port (default: 6379, only used when STORAGE_TYPE=redis)
 
 Sensitive information should be configured in the Secret:
 
-- `REDIS_PASSWORD`: Redis password (optional)
+- `REDIS_PASSWORD`: Redis password (optional, only used when STORAGE_TYPE=redis)
 
 ## Scaling
 
@@ -70,6 +75,6 @@ The Redis storage backend is the most suitable for scaling, as it allows multipl
 
 ## Persistence
 
-- Redis data is stored in a PersistentVolumeClaim
-- NeDB data is stored in a PersistentVolumeClaim
+- Server data (for NeDB storage) is stored in a PersistentVolumeClaim
+- Redis data is stored in a separate PersistentVolumeClaim
 - Memory data is not persistent and will be lost when the pod restarts

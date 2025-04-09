@@ -6,6 +6,11 @@ data:
   NODE_ENV: "production"
   PORT: "3030"
   DEFAULT_NAMESPACE: "default"
+  # Choose one of the following storage types:
+  # STORAGE_TYPE: "memory"  # In-memory storage (data is lost when pod restarts)
+  # STORAGE_TYPE: "nedb"    # File-based storage (data is persisted in volume)
+  STORAGE_TYPE: "redis"   # Redis storage (recommended for production)
+  # Redis configuration (only used when STORAGE_TYPE=redis)
   REDIS_HOST: "neurallog-redis"
   REDIS_PORT: "6379"
 ---

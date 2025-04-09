@@ -5,7 +5,5 @@ resources:
   - configmap.yaml
   - secret.yaml
   - redis-deployment.yaml
-  - server-redis-deployment.yaml
-  - server-nedb-deployment.yaml
-  - server-memory-deployment.yaml
+  - server-deployment.yaml
   - ingress.yaml
