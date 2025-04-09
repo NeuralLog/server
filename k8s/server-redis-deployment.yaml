@@ -1,0 +1,87 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: neurallog-server-redis
+  labels:
+    app: neurallog
+    component: server
+    storage: redis
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: neurallog
+      component: server
+      storage: redis
+  template:
+    metadata:
+      labels:
+        app: neurallog
+        component: server
+        storage: redis
+    spec:
+      containers:
+      - name: server
+        image: neurallog/server:latest  # Replace with your image repository
+        ports:
+        - containerPort: 3030
+          name: http
+        env:
+        - name: NODE_ENV
+          valueFrom:
+            configMapKeyRef:
+              name: neurallog-config
+              key: NODE_ENV
+        - name: PORT
+          valueFrom:
+            configMapKeyRef:
+              name: neurallog-config
+              key: PORT
+        - name: DEFAULT_NAMESPACE
+          valueFrom:
+            configMapKeyRef:
+              name: neurallog-config
+              key: DEFAULT_NAMESPACE
+        - name: STORAGE_TYPE
+          value: "redis"
+        - name: REDIS_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: neurallog-config
+              key: REDIS_HOST
+        - name: REDIS_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: neurallog-config
+              key: REDIS_PORT
+        - name: REDIS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: neurallog-secrets
+              key: REDIS_PASSWORD
+              optional: true
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: neurallog-server-redis
+  labels:
+    app: neurallog
+    component: server
+    storage: redis
+spec:
+  ports:
+  - port: 80
+    targetPort: 3030
+    name: http
+  selector:
+    app: neurallog
+    component: server
+    storage: redis

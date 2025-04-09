@@ -1,0 +1,91 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: neurallog-server-nedb
+  labels:
+    app: neurallog
+    component: server
+    storage: nedb
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: neurallog
+      component: server
+      storage: nedb
+  template:
+    metadata:
+      labels:
+        app: neurallog
+        component: server
+        storage: nedb
+    spec:
+      containers:
+      - name: server
+        image: neurallog/server:latest  # Replace with your image repository
+        ports:
+        - containerPort: 3030
+          name: http
+        env:
+        - name: NODE_ENV
+          valueFrom:
+            configMapKeyRef:
+              name: neurallog-config
+              key: NODE_ENV
+        - name: PORT
+          valueFrom:
+            configMapKeyRef:
+              name: neurallog-config
+              key: PORT
+        - name: DEFAULT_NAMESPACE
+          valueFrom:
+            configMapKeyRef:
+              name: neurallog-config
+              key: DEFAULT_NAMESPACE
+        - name: STORAGE_TYPE
+          value: "nedb"
+        - name: DB_PATH
+          value: "/app/data"
+        volumeMounts:
+        - name: nedb-data
+          mountPath: /app/data
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+      volumes:
+      - name: nedb-data
+        persistentVolumeClaim:
+          claimName: neurallog-nedb-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: neurallog-server-nedb
+  labels:
+    app: neurallog
+    component: server
+    storage: nedb
+spec:
+  ports:
+  - port: 80
+    targetPort: 3030
+    name: http
+  selector:
+    app: neurallog
+    component: server
+    storage: nedb
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: neurallog-nedb-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi

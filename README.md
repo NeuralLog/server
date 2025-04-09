@@ -37,11 +37,13 @@ The NeuralLog server is part of a larger ecosystem as defined in the [NeuralLog 
 ## Features
 
 - RESTful API for log management
-- Support for multiple storage adapters (Memory, NeDB)
+- Support for multiple storage adapters (Memory, NeDB, Redis)
+- Namespace support for logical isolation of data
 - Persistent storage with Docker volumes
 - Comprehensive search capabilities
 - Integration with MCP clients
-- Multi-tenant support (in progress)
+- Multi-tenant support through namespaces
+- Kubernetes deployment support
 
 ## API Endpoints
 
@@ -64,29 +66,90 @@ The NeuralLog server is part of a larger ecosystem as defined in the [NeuralLog 
 
 ### Using Docker Compose (Recommended)
 
-Docker Compose provides a simple way to run the server with persistent storage:
+Docker Compose provides a simple way to run the server with persistent storage. You can choose between different storage adapters:
+
+#### Redis Storage (Recommended for Production)
 
 ```bash
-# Start the server
-docker-compose up -d
+# Start the server with Redis storage
+docker-compose up -d server-redis redis
 
 # View logs
-docker-compose logs -f
+docker-compose logs -f server-redis redis
 
-# Stop the server
+# Stop all services
 docker-compose down
 ```
 
-Or use the npm scripts:
+#### NeDB Storage (File-based)
 
 ```bash
-# Start the server
-npm run docker:compose:up
+# Start the server with NeDB storage
+docker-compose up -d server-nedb
 
 # View logs
+docker-compose logs -f server-nedb
+
+# Stop all services
+docker-compose down
+```
+
+#### Memory Storage (Ephemeral)
+
+```bash
+# Start the server with Memory storage
+docker-compose up -d server-memory
+
+# View logs
+docker-compose logs -f server-memory
+
+# Stop all services
+docker-compose down
+```
+
+#### All Storage Types
+
+```bash
+# Start all servers (Redis, NeDB, and Memory)
+docker-compose up -d
+
+# View all logs
+docker-compose logs -f
+
+# Stop all services
+docker-compose down
+```
+
+#### Using npm Scripts
+
+You can also use the npm scripts:
+
+```bash
+# Start the server with Redis storage
+npm run docker:compose:up:redis
+
+# Start the server with NeDB storage
+npm run docker:compose:up:nedb
+
+# Start the server with Memory storage
+npm run docker:compose:up:memory
+
+# Start all servers
+npm run docker:compose:up
+
+# View logs for Redis storage
+npm run docker:compose:logs:redis
+
+# View logs for NeDB storage
+npm run docker:compose:logs:nedb
+
+# View logs for Memory storage
+npm run docker:compose:logs:memory
+
+# View all logs
 npm run docker:compose:logs
 
-# Stop the server
+# Stop all services
 npm run docker:compose:down
 ```
 
@@ -116,8 +179,12 @@ npm run docker:run
 
 The Docker setup includes:
 
-1. **Persistent Storage**: Log data is stored in a Docker volume mounted at `/app/data` in the container
-2. **Port Mapping**: The server is exposed on port 3030
+1. **Persistent Storage**: Log data is stored in Docker volumes mounted at `/app/data` in the containers
+2. **Port Mapping**:
+   - Redis storage server: Port 3030
+   - NeDB storage server: Port 3031
+   - Memory storage server: Port 3032
+   - Redis service: Port 6379
 3. **Environment Variables**: Configure the server using environment variables in the docker-compose.yml file
 
 ### Docker Network
@@ -127,10 +194,64 @@ When running both the server and client with Docker, they need to communicate wi
 1. **Host Network**: Run the client with `--network host` to access the server on localhost
 2. **Docker Network**: Create a Docker network and connect both containers to it
 
+## Kubernetes Deployment
+
+The NeuralLog server can be deployed to Kubernetes using the provided configuration files in the `k8s` directory.
+
+### Prerequisites
+
+- Kubernetes cluster
+- kubectl configured to communicate with your cluster
+- Optional: Ingress controller (for the ingress configuration)
+
+### Deployment
+
+```bash
+# Apply all Kubernetes configurations
+kubectl apply -k k8s
+
+# Or use the npm script
+npm run k8s:apply
+```
+
+### Available Deployments
+
+The Kubernetes configuration includes deployments for all three storage types:
+
+1. **Redis Storage**: Uses Redis as the storage backend (recommended for production)
+2. **NeDB Storage**: Uses NeDB (file-based) as the storage backend
+3. **Memory Storage**: Uses in-memory storage (data is lost when the pod restarts)
+
+### Accessing the Services
+
+The services are exposed through the Ingress on the following hosts:
+
+- Redis storage: http://redis.neurallog.local
+- NeDB storage: http://nedb.neurallog.local
+- Memory storage: http://memory.neurallog.local
+
+Update your hosts file or DNS configuration to point these domains to your Ingress controller's IP address.
+
+### Configuration
+
+The Kubernetes deployment uses ConfigMaps and Secrets for configuration:
+
+- **ConfigMap**: Contains non-sensitive configuration like environment variables
+- **Secret**: Contains sensitive information like passwords
+
+See the `k8s/README.md` file for more details on the Kubernetes deployment.
+
 ## Environment Variables
 
 - `PORT`: The port the server listens on (default: 3030)
 - `NODE_ENV`: The environment mode (default: production)
+- `STORAGE_TYPE`: The storage adapter to use ('memory', 'nedb', or 'redis', default: 'memory')
+- `DB_PATH`: The path to store NeDB data (default: './data')
+- `DEFAULT_NAMESPACE`: The default namespace for storage (default: 'default')
+- `REDIS_HOST`: The Redis host (default: 'localhost')
+- `REDIS_PORT`: The Redis port (default: 6379)
+- `REDIS_PASSWORD`: The Redis password (optional)
+- `REDIS_DB`: The Redis database number (default: 0)
 
 ## Development
 

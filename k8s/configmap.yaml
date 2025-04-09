@@ -1,0 +1,22 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: neurallog-config
+data:
+  NODE_ENV: "production"
+  PORT: "3030"
+  DEFAULT_NAMESPACE: "default"
+  REDIS_HOST: "neurallog-redis"
+  REDIS_PORT: "6379"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: neurallog-redis-config
+data:
+  redis.conf: |
+    appendonly yes
+    protected-mode no
+    bind 0.0.0.0
+    port 6379
+    dir /data
