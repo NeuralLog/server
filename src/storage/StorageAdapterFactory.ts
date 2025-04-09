@@ -57,20 +57,14 @@ export class StorageAdapterFactory {
 
     // If NeDB is specified and we have a db path
     if (options.type === 'nedb' && options.dbPath) {
-      // Create the database directory if it doesn't exist
       try {
+        // Create the database directory if it doesn't exist
         if (!fs.existsSync(options.dbPath)) {
           fs.mkdirSync(options.dbPath, { recursive: true });
         }
 
-        // Create a namespace-specific directory
-        const namespacePath = path.join(options.dbPath, namespace);
-        if (!fs.existsSync(namespacePath)) {
-          fs.mkdirSync(namespacePath, { recursive: true });
-        }
-
-        logger.info(`Creating NeDB storage adapter for namespace: ${namespace} at ${namespacePath}`);
-        return new NeDBStorageAdapter(namespace, namespacePath);
+        logger.info(`Creating NeDB storage adapter for namespace: ${namespace}`);
+        return new NeDBStorageAdapter(namespace, options.dbPath);
       } catch (error) {
         logger.error(`Error creating database directory: ${error instanceof Error ? error.message : String(error)}`);
         logger.info(`Falling back to in-memory storage for namespace: ${namespace}`);

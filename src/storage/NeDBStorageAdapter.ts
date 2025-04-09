@@ -4,6 +4,9 @@ import fs from 'fs';
 import path from 'path';
 import logger from '../utils/logger';
 
+// Server namespace prefix for all data
+const SERVER_NAMESPACE = 'logserver';
+
 /**
  * NeDB storage adapter for storing log entries
  */
@@ -11,22 +14,48 @@ export class NeDBStorageAdapter implements StorageAdapter {
   private _logsDb: Datastore;
   private initialized: boolean = false;
 
+  private namespace: string;
+
   /**
    * Constructor
    *
+   * @param namespace Namespace for this storage adapter
    * @param dbPath Path to the database directory (default: './data')
    */
-  constructor(private readonly dbPath: string = './data') {
+  constructor(namespace: string = 'default', private readonly dbPath: string = './data') {
+    this.namespace = namespace;
+
     // Create the database directory if it doesn't exist
     if (!fs.existsSync(dbPath)) {
       fs.mkdirSync(dbPath, { recursive: true });
     }
 
+    // Create the server namespace directory
+    const serverNamespacePath = path.join(dbPath, SERVER_NAMESPACE);
+    if (!fs.existsSync(serverNamespacePath)) {
+      fs.mkdirSync(serverNamespacePath, { recursive: true });
+    }
+
+    // Create the namespace directory
+    const namespacePath = path.join(serverNamespacePath, namespace);
+    if (!fs.existsSync(namespacePath)) {
+      fs.mkdirSync(namespacePath, { recursive: true });
+    }
+
     // Create the database
     this._logsDb = new Datastore({
-      filename: path.join(dbPath, 'logs.db'),
+      filename: path.join(namespacePath, 'logs.db'),
       autoload: false
     });
+  }
+
+  /**
+   * Get the namespace for this storage adapter
+   *
+   * @returns The namespace for this storage adapter
+   */
+  public getNamespace(): string {
+    return this.namespace;
   }
 
   /**
@@ -54,6 +83,7 @@ export class NeDBStorageAdapter implements StorageAdapter {
       await this.createIndex(this._logsDb, 'name', { unique: false });
 
       this.initialized = true;
+      logger.info(`NeDB storage adapter initialized for ${SERVER_NAMESPACE}:${this.namespace}`);
     } catch (error) {
       logger.error(`Error initializing NeDBStorageAdapter: ${error instanceof Error ? error.message : String(error)}`);
       throw error;
@@ -616,5 +646,14 @@ export class NeDBStorageAdapter implements StorageAdapter {
     }
 
     return filteredEntries;
+  }
+
+  /**
+   * Close the adapter
+   * This is used to clean up resources when the adapter is no longer needed
+   */
+  public async close(): Promise<void> {
+    this.initialized = false;
+    logger.info(`NeDB storage adapter closed for ${SERVER_NAMESPACE}:${this.namespace}`);
   }
 }

@@ -1,6 +1,9 @@
 import { StorageAdapter } from './StorageAdapter';
 import logger from '../utils/logger';
 
+// Server namespace prefix for all data
+const SERVER_NAMESPACE = 'logserver';
+
 /**
  * Memory storage adapter for storing log entries
  */
@@ -40,7 +43,7 @@ export class MemoryStorageAdapter implements StorageAdapter {
    */
   public async initialize(): Promise<void> {
     this.initialized = true;
-    logger.info(`Memory storage adapter initialized for namespace: ${this.namespace}`);
+    logger.info(`Memory storage adapter initialized for ${SERVER_NAMESPACE}:${this.namespace}`);
   }
 
   /**

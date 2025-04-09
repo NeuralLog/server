@@ -2,6 +2,9 @@ import { StorageAdapter } from './StorageAdapter';
 import Redis from 'ioredis';
 import logger from '../utils/logger';
 
+// Server namespace prefix for all keys
+const SERVER_NAMESPACE = 'logserver';
+
 /**
  * Redis connection options
  */
@@ -76,7 +79,7 @@ export class RedisStorageAdapter implements StorageAdapter {
       await this.client.ping();
 
       this.initialized = true;
-      logger.info(`Redis storage adapter initialized for namespace: ${this.namespace}`);
+      logger.info(`Redis storage adapter initialized for ${SERVER_NAMESPACE}:${this.namespace}`);
     } catch (error) {
       logger.error(`Error initializing RedisStorageAdapter: ${error instanceof Error ? error.message : String(error)}`);
       throw error;
@@ -343,7 +346,7 @@ export class RedisStorageAdapter implements StorageAdapter {
     try {
       await this.client.quit();
       this.initialized = false;
-      logger.info(`Redis storage adapter closed for namespace: ${this.namespace}`);
+      logger.info(`Redis storage adapter closed for ${SERVER_NAMESPACE}:${this.namespace}`);
     } catch (error) {
       logger.error(`Error closing Redis storage adapter: ${error instanceof Error ? error.message : String(error)}`);
     }
@@ -539,7 +542,7 @@ export class RedisStorageAdapter implements StorageAdapter {
    * @returns Redis key
    */
   private getLogKey(logName: string, logId: string): string {
-    return `${this.namespace}:logs:${logName}:${logId}`;
+    return `${SERVER_NAMESPACE}:${this.namespace}:logs:${logName}:${logId}`;
   }
 
   /**
@@ -548,7 +551,7 @@ export class RedisStorageAdapter implements StorageAdapter {
    * @returns Redis key
    */
   private getLogNamesKey(): string {
-    return `${this.namespace}:lognames`;
+    return `${SERVER_NAMESPACE}:${this.namespace}:lognames`;
   }
 
   /**
@@ -558,6 +561,6 @@ export class RedisStorageAdapter implements StorageAdapter {
    * @returns Redis key
    */
   private getLogEntriesKey(logName: string): string {
-    return `${this.namespace}:logs:${logName}:entries`;
+    return `${SERVER_NAMESPACE}:${this.namespace}:logs:${logName}:entries`;
   }
 }
