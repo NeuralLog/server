@@ -1,0 +1,18 @@
+version: '3.8'
+
+services:
+  # NeuralLog server
+  server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: neurallog-server
+    ports:
+      - "3032:3030"
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - PORT=3030
+      # Memory storage configuration
+      - STORAGE_TYPE=memory
+      - DEFAULT_NAMESPACE=default

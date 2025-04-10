@@ -1,6 +1,7 @@
 import { StorageAdapter } from './StorageAdapter';
 import Redis from 'ioredis';
 import logger from '../utils/logger';
+import { LogEntry, LogStatistics, AggregateStatistics } from 'neurallog-shared/types';
 
 // Server namespace prefix for all keys
 const SERVER_NAMESPACE = 'logserver';
@@ -25,6 +26,8 @@ export class RedisStorageAdapter implements StorageAdapter {
   private client: Redis;
   private initialized: boolean = false;
   private namespace: string;
+
+  // No in-memory statistics storage - everything is stored in Redis
 
   /**
    * Constructor
@@ -91,17 +94,17 @@ export class RedisStorageAdapter implements StorageAdapter {
    *
    * @param logId Log ID
    * @param logName Log name
-   * @param logEntry Log entry
+   * @param logData Log data
    */
-  public async storeLogEntry(logId: string, logName: string, logEntry: any): Promise<void> {
+  public async storeLogEntry(logId: string, logName: string, logData: any): Promise<void> {
     await this.ensureInitialized();
 
     try {
       // Create a document with the log entry
-      const document = {
+      const document: LogEntry = {
         id: logId,
         name: logName,
-        data: logEntry,
+        data: logData,
         timestamp: new Date().toISOString()
       };
 
@@ -116,6 +119,9 @@ export class RedisStorageAdapter implements StorageAdapter {
       // Add to the log entries sorted set (for time-based queries)
       const logEntriesKey = this.getLogEntriesKey(logName);
       await this.client.zadd(logEntriesKey, new Date(document.timestamp).getTime(), logId);
+
+      // Update statistics
+      await this.updateStatisticsOnAdd(logName, document);
 
       logger.info(`Stored log entry: ${logName}, ID: ${logId}, namespace: ${this.namespace}`);
     } catch (error) {
@@ -190,6 +196,9 @@ export class RedisStorageAdapter implements StorageAdapter {
       const logEntriesKey = this.getLogEntriesKey(logName);
       await this.client.zadd(logEntriesKey, new Date(document.timestamp).getTime(), logId);
 
+      // Update statistics
+      await this.updateStatisticsOnUpdate(logName, existing, document);
+
       logger.info(`Updated log entry: ${logName}, ID: ${logId}, namespace: ${this.namespace}`);
       return true;
     } catch (error) {
@@ -209,21 +218,30 @@ export class RedisStorageAdapter implements StorageAdapter {
     await this.ensureInitialized();
 
     try {
-      // Delete the log entry
+      // Get the log entry before deleting it
       const logKey = this.getLogKey(logName, logId);
-      const deleted = await this.client.del(logKey);
+      const entryJson = await this.client.get(logKey);
+
+      if (!entryJson) {
+        logger.info(`Log entry not found for deletion: ${logName}, ID: ${logId}, namespace: ${this.namespace}`);
+        return false;
+      }
+
+      // Parse the entry
+      const entry = JSON.parse(entryJson);
+
+      // Delete the log entry
+      await this.client.del(logKey);
 
       // Remove from the sorted set
       const logEntriesKey = this.getLogEntriesKey(logName);
       await this.client.zrem(logEntriesKey, logId);
 
-      if (deleted > 0) {
-        logger.info(`Deleted log entry: ${logName}, ID: ${logId}, namespace: ${this.namespace}`);
-        return true;
-      } else {
-        logger.info(`Log entry not found for deletion: ${logName}, ID: ${logId}, namespace: ${this.namespace}`);
-        return false;
-      }
+      // Update statistics
+      await this.updateStatisticsOnDelete(logName, entry);
+
+      logger.info(`Deleted log entry: ${logName}, ID: ${logId}, namespace: ${this.namespace}`);
+      return true;
     } catch (error) {
       logger.error(`Error deleting log entry: ${error instanceof Error ? error.message : String(error)}`);
       return false;
@@ -258,9 +276,9 @@ export class RedisStorageAdapter implements StorageAdapter {
       }
 
       const results = await pipeline.exec();
-      const entries = results
+      const entries = results ? results
         .filter(result => result && result[1])
-        .map(result => JSON.parse(result[1] as string));
+        .map(result => JSON.parse(result[1] as string)) : [];
 
       logger.info(`Retrieved ${entries.length} entries for log: ${logName}, namespace: ${this.namespace}`);
       return entries;
@@ -330,6 +348,9 @@ export class RedisStorageAdapter implements StorageAdapter {
 
       await pipeline.exec();
 
+      // Update statistics
+      await this.updateStatisticsOnClear(logName);
+
       logger.info(`Cleared log: ${logName}, removed ${logIds.length} entries, namespace: ${this.namespace}`);
       return true;
     } catch (error) {
@@ -338,19 +359,7 @@ export class RedisStorageAdapter implements StorageAdapter {
     }
   }
 
-  /**
-   * Close the adapter
-   * This is used to clean up resources when the adapter is no longer needed
-   */
-  public async close(): Promise<void> {
-    try {
-      await this.client.quit();
-      this.initialized = false;
-      logger.info(`Redis storage adapter closed for ${SERVER_NAMESPACE}:${this.namespace}`);
-    } catch (error) {
-      logger.error(`Error closing Redis storage adapter: ${error instanceof Error ? error.message : String(error)}`);
-    }
-  }
+
 
   /**
    * Search logs based on various criteria
@@ -472,9 +481,9 @@ export class RedisStorageAdapter implements StorageAdapter {
     }
 
     const results = await pipeline.exec();
-    return results
+    return results ? results
       .filter(result => result && result[1])
-      .map(result => JSON.parse(result[1] as string));
+      .map(result => JSON.parse(result[1] as string)) : [];
   }
 
   /**
@@ -535,6 +544,16 @@ export class RedisStorageAdapter implements StorageAdapter {
   }
 
   /**
+   * Get a generic key with namespace
+   *
+   * @param key Key
+   * @returns Redis key
+   */
+  private getKey(key: string): string {
+    return `${SERVER_NAMESPACE}:${this.namespace}:${key}`;
+  }
+
+  /**
    * Get the key for a log entry
    *
    * @param logName Log name
@@ -542,7 +561,7 @@ export class RedisStorageAdapter implements StorageAdapter {
    * @returns Redis key
    */
   private getLogKey(logName: string, logId: string): string {
-    return `${SERVER_NAMESPACE}:${this.namespace}:logs:${logName}:${logId}`;
+    return this.getKey(`logs:${logName}:${logId}`);
   }
 
   /**
@@ -551,7 +570,7 @@ export class RedisStorageAdapter implements StorageAdapter {
    * @returns Redis key
    */
   private getLogNamesKey(): string {
-    return `${SERVER_NAMESPACE}:${this.namespace}:lognames`;
+    return this.getKey('lognames');
   }
 
   /**
@@ -561,6 +580,397 @@ export class RedisStorageAdapter implements StorageAdapter {
    * @returns Redis key
    */
   private getLogEntriesKey(logName: string): string {
-    return `${SERVER_NAMESPACE}:${this.namespace}:logs:${logName}:entries`;
+    return this.getKey(`logs:${logName}:entries`);
+  }
+
+
+
+
+
+  /**
+   * Get aggregate statistics for all logs
+   *
+   * @returns Statistics object with total logs, total entries, and per-log statistics
+   */
+  public async getAggregateStatistics(): Promise<AggregateStatistics> {
+    await this.ensureInitialized();
+
+    try {
+      // Get total logs and entries
+      const totalLogsKey = this.getKey('stats:totalLogs');
+      const totalEntriesKey = this.getKey('stats:totalEntries');
+
+      const [totalLogsStr, totalEntriesStr] = await Promise.all([
+        this.client.get(totalLogsKey),
+        this.client.get(totalEntriesKey)
+      ]);
+
+      const totalLogs = totalLogsStr ? parseInt(totalLogsStr) : 0;
+      const totalEntries = totalEntriesStr ? parseInt(totalEntriesStr) : 0;
+
+      // Get all log names
+      const logNames = await this.getLogNames();
+
+      // Get statistics for each log
+      const logStats: LogStatistics[] = [];
+
+      for (const logName of logNames) {
+        const logEntryCountKey = this.getKey(`stats:log:${logName}:entryCount`);
+        const firstEntryTimestampKey = this.getKey(`stats:log:${logName}:firstEntryTimestamp`);
+        const lastEntryTimestampKey = this.getKey(`stats:log:${logName}:lastEntryTimestamp`);
+
+        const [entryCountStr, firstTimestampStr, lastTimestampStr] = await Promise.all([
+          this.client.get(logEntryCountKey),
+          this.client.get(firstEntryTimestampKey),
+          this.client.get(lastEntryTimestampKey)
+        ]);
+
+        const entryCount = entryCountStr ? parseInt(entryCountStr) : 0;
+
+        if (entryCount > 0) {
+          logStats.push({
+            logName,
+            entryCount,
+            firstEntryTimestamp: firstTimestampStr ? parseInt(firstTimestampStr) : undefined,
+            lastEntryTimestamp: lastTimestampStr ? parseInt(lastTimestampStr) : undefined
+          });
+        }
+      }
+
+      // Sort log stats by entry count (descending)
+      logStats.sort((a, b) => b.entryCount - a.entryCount);
+
+      return {
+        totalLogs,
+        totalEntries,
+        logStats
+      };
+    } catch (error) {
+      logger.error(`Error getting aggregate statistics: ${error instanceof Error ? error.message : String(error)}`);
+      return {
+        totalLogs: 0,
+        totalEntries: 0,
+        logStats: []
+      };
+    }
+  }
+
+  /**
+   * Get statistics for a specific log
+   *
+   * @param logName Log name
+   * @returns Statistics object for the specified log
+   */
+  public async getLogStatistics(logName: string): Promise<LogStatistics | null> {
+    await this.ensureInitialized();
+
+    try {
+      // Check if the log exists
+      const logEntryCountKey = this.getKey(`stats:log:${logName}:entryCount`);
+      const entryCountStr = await this.client.get(logEntryCountKey);
+
+      if (!entryCountStr) return null;
+
+      const entryCount = parseInt(entryCountStr);
+
+      // Get timestamps
+      const firstEntryTimestampKey = this.getKey(`stats:log:${logName}:firstEntryTimestamp`);
+      const lastEntryTimestampKey = this.getKey(`stats:log:${logName}:lastEntryTimestamp`);
+
+      const [firstTimestampStr, lastTimestampStr] = await Promise.all([
+        this.client.get(firstEntryTimestampKey),
+        this.client.get(lastEntryTimestampKey)
+      ]);
+
+      return {
+        logName,
+        entryCount,
+        firstEntryTimestamp: firstTimestampStr ? parseInt(firstTimestampStr) : undefined,
+        lastEntryTimestamp: lastTimestampStr ? parseInt(lastTimestampStr) : undefined
+      };
+    } catch (error) {
+      logger.error(`Error getting log statistics: ${error instanceof Error ? error.message : String(error)}`);
+      return null;
+    }
+  }
+
+  /**
+   * Update statistics for a log when an entry is added
+   *
+   * @param logName Log name
+   * @param entry Log entry
+   */
+  public async updateStatisticsOnAdd(logName: string, entry: LogEntry): Promise<void> {
+    await this.ensureInitialized();
+
+    try {
+      // Get keys
+      const totalEntriesKey = this.getKey('stats:totalEntries');
+      const totalLogsKey = this.getKey('stats:totalLogs');
+      const logEntryCountKey = this.getKey(`stats:log:${logName}:entryCount`);
+
+      // Check if this is a new log
+      const currentCount = await this.client.get(logEntryCountKey);
+
+      // Use a multi command to ensure atomicity
+      const multi = this.client.multi();
+
+      // Always increment total entries
+      multi.incr(totalEntriesKey);
+
+      // Increment log entry count
+      multi.incr(logEntryCountKey);
+
+      // If this is a new log, increment total logs
+      if (!currentCount) {
+        multi.incr(totalLogsKey);
+      }
+
+      // Update timestamps if available
+      const timestamp = entry.timestamp ? new Date(entry.timestamp).getTime() : undefined;
+      if (timestamp) {
+        const firstEntryTimestampKey = this.getKey(`stats:log:${logName}:firstEntryTimestamp`);
+        const lastEntryTimestampKey = this.getKey(`stats:log:${logName}:lastEntryTimestamp`);
+
+        // Get current timestamps
+        const [currentFirstTimestamp, currentLastTimestamp] = await Promise.all([
+          this.client.get(firstEntryTimestampKey),
+          this.client.get(lastEntryTimestampKey)
+        ]);
+
+        // Update first timestamp if needed
+        if (!currentFirstTimestamp || timestamp < parseInt(currentFirstTimestamp)) {
+          multi.set(firstEntryTimestampKey, timestamp.toString());
+        }
+
+        // Update last timestamp if needed
+        if (!currentLastTimestamp || timestamp > parseInt(currentLastTimestamp)) {
+          multi.set(lastEntryTimestampKey, timestamp.toString());
+        }
+      }
+
+      // Execute all commands atomically
+      await multi.exec();
+    } catch (error) {
+      logger.error(`Error updating statistics on add: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  /**
+   * Update statistics for a log when an entry is updated
+   *
+   * @param logName Log name
+   * @param oldEntry Old log entry
+   * @param newEntry New log entry
+   */
+  public async updateStatisticsOnUpdate(logName: string, oldEntry: LogEntry, newEntry: LogEntry): Promise<void> {
+    await this.ensureInitialized();
+
+    try {
+      // Update timestamps if needed
+      const newTimestamp = newEntry.timestamp ? new Date(newEntry.timestamp).getTime() : undefined;
+      if (newTimestamp) {
+        const firstEntryTimestampKey = this.getKey(`stats:log:${logName}:firstEntryTimestamp`);
+        const lastEntryTimestampKey = this.getKey(`stats:log:${logName}:lastEntryTimestamp`);
+
+        // Get current timestamps
+        const [currentFirstTimestampStr, currentLastTimestampStr] = await Promise.all([
+          this.client.get(firstEntryTimestampKey),
+          this.client.get(lastEntryTimestampKey)
+        ]);
+
+        const currentFirstTimestamp = currentFirstTimestampStr ? parseInt(currentFirstTimestampStr) : undefined;
+        const currentLastTimestamp = currentLastTimestampStr ? parseInt(currentLastTimestampStr) : undefined;
+
+        // Check if we need to update the first entry timestamp
+        const oldTimestamp = oldEntry.timestamp ? new Date(oldEntry.timestamp).getTime() : undefined;
+
+        if (oldTimestamp && currentFirstTimestamp && oldTimestamp === currentFirstTimestamp) {
+          // The updated entry was the first entry, we need to recalculate
+          // Get all entries for this log and find the new first timestamp
+          const entries = await this.getLogsByName(logName);
+          let newFirstTimestamp = newTimestamp;
+
+          for (const entry of entries) {
+            if (entry.id !== newEntry.id) { // Skip the updated entry
+              const entryTimestamp = entry.timestamp ? new Date(entry.timestamp).getTime() : undefined;
+              if (entryTimestamp && entryTimestamp < newFirstTimestamp) {
+                newFirstTimestamp = entryTimestamp;
+              }
+            }
+          }
+
+          // Update the first timestamp
+          await this.client.set(firstEntryTimestampKey, newFirstTimestamp.toString());
+        } else if (newTimestamp && (!currentFirstTimestamp || newTimestamp < currentFirstTimestamp)) {
+          // The new timestamp is earlier than the current first timestamp
+          await this.client.set(firstEntryTimestampKey, newTimestamp.toString());
+        }
+
+        // Check if we need to update the last entry timestamp
+        if (oldTimestamp && currentLastTimestamp && oldTimestamp === currentLastTimestamp) {
+          // The updated entry was the last entry, we need to recalculate
+          // Get all entries for this log and find the new last timestamp
+          const entries = await this.getLogsByName(logName);
+          let newLastTimestamp = newTimestamp;
+
+          for (const entry of entries) {
+            if (entry.id !== newEntry.id) { // Skip the updated entry
+              const entryTimestamp = entry.timestamp ? new Date(entry.timestamp).getTime() : undefined;
+              if (entryTimestamp && entryTimestamp > newLastTimestamp) {
+                newLastTimestamp = entryTimestamp;
+              }
+            }
+          }
+
+          // Update the last timestamp
+          await this.client.set(lastEntryTimestampKey, newLastTimestamp.toString());
+        } else if (newTimestamp && (!currentLastTimestamp || newTimestamp > currentLastTimestamp)) {
+          // The new timestamp is later than the current last timestamp
+          await this.client.set(lastEntryTimestampKey, newTimestamp.toString());
+        }
+      }
+    } catch (error) {
+      logger.error(`Error updating statistics on update: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  /**
+   * Update statistics for a log when an entry is deleted
+   *
+   * @param logName Log name
+   * @param entry Log entry
+   */
+  public async updateStatisticsOnDelete(logName: string, entry: LogEntry): Promise<void> {
+    await this.ensureInitialized();
+
+    try {
+      // Decrement total entries counter
+      const totalEntriesKey = this.getKey('stats:totalEntries');
+      await this.client.decr(totalEntriesKey);
+
+      // Decrement log entry count
+      const logEntryCountKey = this.getKey(`stats:log:${logName}:entryCount`);
+      const newCount = await this.client.decr(logEntryCountKey);
+
+      // If no more entries, remove the log stats and decrement total logs
+      if (newCount <= 0) {
+        // Decrement total logs counter
+        const totalLogsKey = this.getKey('stats:totalLogs');
+        await this.client.decr(totalLogsKey);
+
+        // Remove log statistics keys
+        const firstEntryTimestampKey = this.getKey(`stats:log:${logName}:firstEntryTimestamp`);
+        const lastEntryTimestampKey = this.getKey(`stats:log:${logName}:lastEntryTimestamp`);
+
+        await Promise.all([
+          this.client.del(logEntryCountKey),
+          this.client.del(firstEntryTimestampKey),
+          this.client.del(lastEntryTimestampKey)
+        ]);
+
+        return;
+      }
+
+      // Check if we need to recalculate timestamps
+      const timestamp = entry.timestamp ? new Date(entry.timestamp).getTime() : undefined;
+      if (timestamp) {
+        const firstEntryTimestampKey = this.getKey(`stats:log:${logName}:firstEntryTimestamp`);
+        const lastEntryTimestampKey = this.getKey(`stats:log:${logName}:lastEntryTimestamp`);
+
+        const [firstTimestampStr, lastTimestampStr] = await Promise.all([
+          this.client.get(firstEntryTimestampKey),
+          this.client.get(lastEntryTimestampKey)
+        ]);
+
+        const firstTimestamp = firstTimestampStr ? parseInt(firstTimestampStr) : undefined;
+        const lastTimestamp = lastTimestampStr ? parseInt(lastTimestampStr) : undefined;
+
+        // If the deleted entry was the first or last, recalculate
+        if ((firstTimestamp && timestamp === firstTimestamp) ||
+            (lastTimestamp && timestamp === lastTimestamp)) {
+          // Get all entries for this log
+          const entries = await this.getLogsByName(logName);
+
+          if (entries.length > 0) {
+            // Find new first and last timestamps
+            let newFirstTimestamp: number | undefined;
+            let newLastTimestamp: number | undefined;
+
+            for (const e of entries) {
+              const entryTimestamp = e.timestamp ? new Date(e.timestamp).getTime() : undefined;
+              if (entryTimestamp) {
+                if (!newFirstTimestamp || entryTimestamp < newFirstTimestamp) {
+                  newFirstTimestamp = entryTimestamp;
+                }
+                if (!newLastTimestamp || entryTimestamp > newLastTimestamp) {
+                  newLastTimestamp = entryTimestamp;
+                }
+              }
+            }
+
+            // Update timestamps
+            if (newFirstTimestamp) {
+              await this.client.set(firstEntryTimestampKey, newFirstTimestamp.toString());
+            }
+            if (newLastTimestamp) {
+              await this.client.set(lastEntryTimestampKey, newLastTimestamp.toString());
+            }
+          }
+        }
+      }
+    } catch (error) {
+      logger.error(`Error updating statistics on delete: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  /**
+   * Update statistics for a log when it is cleared
+   *
+   * @param logName Log name
+   */
+  public async updateStatisticsOnClear(logName: string): Promise<void> {
+    await this.ensureInitialized();
+
+    try {
+      // Get current entry count for this log
+      const logEntryCountKey = this.getKey(`stats:log:${logName}:entryCount`);
+      const entryCountStr = await this.client.get(logEntryCountKey);
+      const entryCount = entryCountStr ? parseInt(entryCountStr) : 0;
+
+      if (entryCount > 0) {
+        // Decrement total entries by the log's entry count
+        const totalEntriesKey = this.getKey('stats:totalEntries');
+        await this.client.decrby(totalEntriesKey, entryCount);
+
+        // Decrement total logs
+        const totalLogsKey = this.getKey('stats:totalLogs');
+        await this.client.decr(totalLogsKey);
+
+        // Remove log statistics keys
+        const firstEntryTimestampKey = this.getKey(`stats:log:${logName}:firstEntryTimestamp`);
+        const lastEntryTimestampKey = this.getKey(`stats:log:${logName}:lastEntryTimestamp`);
+
+        await Promise.all([
+          this.client.del(logEntryCountKey),
+          this.client.del(firstEntryTimestampKey),
+          this.client.del(lastEntryTimestampKey)
+        ]);
+      }
+    } catch (error) {
+      logger.error(`Error updating statistics on clear: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+
+
+  /**
+   * Close the adapter
+   * This is used to clean up resources when the adapter is no longer needed
+   */
+  public async close(): Promise<void> {
+    this.client.disconnect();
+    this.initialized = false;
+    logger.info(`Redis storage adapter closed for ${SERVER_NAMESPACE}:${this.namespace}`);
   }
 }

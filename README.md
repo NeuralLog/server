@@ -41,34 +41,71 @@ The NeuralLog server is part of a larger ecosystem as defined in the [NeuralLog 
 - Namespace support for logical isolation of data
 - Persistent storage with Docker volumes
 - Comprehensive search capabilities
+- Statistics tracking and reporting
 - Integration with MCP clients
 - Multi-tenant support through namespaces
 - Kubernetes deployment support
 
 ## API Endpoints
 
+### Root Endpoint
+
+- `GET /`: Health check endpoint
+
 ### Log Management
 
-- `GET /logs`: Get all log names
-- `GET /logs/:logName`: Get entries for a specific log
-- `POST /logs/:logName`: Overwrite a log (clear and add new entries)
-- `PATCH /logs/:logName`: Append to a log
-- `DELETE /logs/:logName`: Clear a log
-- `GET /logs/:logName/:logId`: Get a specific log entry
-- `POST /logs/:logName/:logId`: Update a specific log entry
-- `DELETE /logs/:logName/:logId`: Delete a specific log entry
+- `GET /api/logs`: Get all log names
+- `GET /api/logs/:logName`: Get entries for a specific log
+- `POST /api/logs/:logName`: Overwrite a log (clear and add new entries)
+- `PATCH /api/logs/:logName`: Append to a log
+- `DELETE /api/logs/:logName`: Clear a log
+- `GET /api/logs/:logName/:logId`: Get a specific log entry
+- `POST /api/logs/:logName/:logId`: Update a specific log entry
+- `DELETE /api/logs/:logName/:logId`: Delete a specific log entry
 
 ### Search
 
-- `GET /search`: Search logs with various criteria
+- `GET /api/search`: Search logs with various criteria
 
 ## Running with Docker
 
 ### Using Docker Compose (Recommended)
 
-Docker Compose provides a simple way to run the server with persistent storage. You can choose between different storage adapters:
+Docker Compose provides a simple way to run the server with persistent storage. You can choose between different storage adapters by using the appropriate Docker Compose file:
 
-The server can be configured to use different storage backends by setting the `STORAGE_TYPE` environment variable in the docker-compose.yml file:
+#### Memory Storage
+
+Memory storage is the simplest option, but data is lost when the container restarts. It's suitable for development and testing.
+
+```bash
+docker-compose -f docker-compose.memory.yml up -d
+```
+
+The server will be available at http://localhost:3032.
+
+#### NeDB Storage
+
+NeDB storage persists data to disk, making it suitable for small-scale deployments.
+
+```bash
+docker-compose -f docker-compose.nedb.yml up -d
+```
+
+The server will be available at http://localhost:3031.
+
+#### Redis Storage
+
+Redis storage is recommended for production deployments, offering better performance and reliability.
+
+```bash
+docker-compose -f docker-compose.redis.yml up -d
+```
+
+The server will be available at http://localhost:3030.
+
+#### Using the Default Docker Compose File
+
+You can also use the default docker-compose.yml file and configure the storage type by uncommenting the appropriate environment variables:
 
 ```bash
 # Start the server with Docker Compose
@@ -83,7 +120,7 @@ docker-compose down
 
 #### Using npm Scripts
 
-You can also use the npm scripts:
+You can also use the npm scripts with the default Docker Compose file:
 
 ```bash
 # Start the server
@@ -94,6 +131,16 @@ npm run docker:compose:logs
 
 # Stop all services
 npm run docker:compose:down
+```
+
+To use a specific storage type with npm scripts, you can add the following scripts to your package.json:
+
+```json
+"scripts": {
+  "docker:compose:up:memory": "docker-compose -f docker-compose.memory.yml up -d",
+  "docker:compose:up:nedb": "docker-compose -f docker-compose.nedb.yml up -d",
+  "docker:compose:up:redis": "docker-compose -f docker-compose.redis.yml up -d"
+}
 ```
 
 #### Configuring Storage Type
@@ -143,9 +190,11 @@ The Docker setup includes:
 
 1. **Persistent Storage**: Log data is stored in Docker volumes mounted at `/app/data` in the container
 2. **Port Mapping**:
-   - NeuralLog server: Port 3030
+   - NeuralLog server with Redis storage: Port 3030
+   - NeuralLog server with NeDB storage: Port 3031
+   - NeuralLog server with Memory storage: Port 3032
    - Redis service: Port 6379
-3. **Environment Variables**: Configure the server using environment variables in the docker-compose.yml file
+3. **Environment Variables**: Configure the server using environment variables in the Docker Compose files
 
 ### Docker Network
 
@@ -254,21 +303,21 @@ This requires Docker and Docker Compose to be installed and running.
 
 #### Testing with Docker (Recommended)
 
-1. Start the server using Docker Compose:
+1. Start the server using Docker Compose with Redis storage:
    ```bash
-   docker-compose up -d
+   docker-compose -f docker-compose.redis.yml up -d
    ```
 
 2. Test the API directly:
    ```bash
    # Get all logs
-   curl http://localhost:3030/logs
+   curl http://localhost:3030/api/logs
 
    # Append to a log
-   curl -X POST http://localhost:3030/logs/test-log -H "Content-Type: application/json" -d '{"message":"Test message","level":"info"}'
+   curl -X POST http://localhost:3030/api/logs/test-log -H "Content-Type: application/json" -d '{"message":"Test message","level":"info"}'
 
    # Get a specific log
-   curl http://localhost:3030/logs/test-log
+   curl http://localhost:3030/api/logs/test-log
    ```
 
 3. Test with the client Docker container:
@@ -289,14 +338,25 @@ This requires Docker and Docker Compose to be installed and running.
    echo '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"get_log_by_name","arguments":{"log_name":"test-log"}}}' | docker run -i --network host -e WEB_SERVER_URL=http://localhost:3030 neurallog-client
    ```
 
+   You can also test with NeDB or Memory storage by using the appropriate Docker Compose file and port:
+   ```bash
+   # For NeDB storage
+   docker-compose -f docker-compose.nedb.yml up -d
+   # Use port 3031 for API calls
+
+   # For Memory storage
+   docker-compose -f docker-compose.memory.yml up -d
+   # Use port 3032 for API calls
+   ```
+
 #### Complete End-to-End Test Workflow
 
 Here's a complete workflow for testing both components with Docker:
 
 ```bash
-# 1. Start the server
+# 1. Start the server with Redis storage
 cd server
-docker-compose up -d
+docker-compose -f docker-compose.redis.yml up -d
 
 # 2. Build the client
 cd ../client
@@ -322,6 +382,10 @@ echo '{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"search","a
 # Clean up
 echo '{"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"clear_log","arguments":{"log_name":"test-object"}}}' | docker run -i --network host -e WEB_SERVER_URL=http://localhost:3030 neurallog-client
 echo '{"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"clear_log","arguments":{"log_name":"test-primitive"}}}' | docker run -i --network host -e WEB_SERVER_URL=http://localhost:3030 neurallog-client
+
+# Stop the server
+cd ../server
+docker-compose -f docker-compose.redis.yml down
 ```
 
 ## Data Handling

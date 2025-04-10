@@ -1,0 +1,25 @@
+version: '3.8'
+
+services:
+  # NeuralLog server
+  server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: neurallog-server
+    ports:
+      - "3031:3030"
+    volumes:
+      - server-data:/app/data
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - PORT=3030
+      # NeDB storage configuration
+      - STORAGE_TYPE=nedb
+      - DB_PATH=/app/data
+      - DEFAULT_NAMESPACE=default
+
+volumes:
+  server-data:
+    driver: local

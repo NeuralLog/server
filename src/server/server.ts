@@ -26,7 +26,16 @@ export class Server {
     this.app.use(bodyParser.urlencoded({ extended: true }));
 
     // Configure routes
-    this.app.use('/', routes);
+    this.app.use('/api', routes);
+
+    // Add a root route for health checks
+    this.app.get('/', (req, res) => {
+      res.json({
+        status: 'ok',
+        message: 'NeuralLog server is running',
+        version: '1.0.0'
+      });
+    });
 
     // Error handling
     this.app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
@@ -42,8 +51,8 @@ export class Server {
    * Start the server
    */
   public start(): void {
-    this.app.listen(this.port, () => {
-      logger.info(`Server listening on port ${this.port}`);
+    this.app.listen(this.port, '0.0.0.0', () => {
+      logger.info(`Server listening on 0.0.0.0:${this.port}`);
     });
   }
 }

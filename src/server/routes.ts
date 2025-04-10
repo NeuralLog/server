@@ -8,7 +8,9 @@ import {
   getLogEntryById,
   updateLogEntryById,
   deleteLogEntryById,
-  searchLogs
+  searchLogs,
+  getAggregateStatistics,
+  getLogStatistics
 } from './controllers/logsController';
 
 const router = express.Router();
@@ -20,6 +22,10 @@ router.get('/logs/:logName', getLogByName); // Get a log by name
 router.get('/logs', getLogs); // Get all logs
 router.delete('/logs/:logName', clearLog); // Clear a log
 router.get('/search', searchLogs); // Search logs
+
+// Statistics endpoints
+router.get('/statistics', getAggregateStatistics); // Get aggregate statistics for all logs
+router.get('/logs/:logName/statistics', getLogStatistics); // Get statistics for a specific log
 
 // Log entry endpoints
 router.get('/logs/:logName/:logId', getLogEntryById); // Get a log entry by ID

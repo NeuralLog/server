@@ -4,6 +4,7 @@ import { StorageAdapter } from '../../storage/StorageAdapter';
 import { StorageAdapterFactory } from '../../storage/StorageAdapterFactory';
 import { NamespacedStorageAdapterFactory } from '../../storage/NamespacedStorageAdapterFactory';
 import { v4 as uuidv4 } from 'uuid';
+import { LogEntry } from 'neurallog-shared/types';
 
 // Get configuration from environment variables
 const DEFAULT_NAMESPACE = process.env.DEFAULT_NAMESPACE || 'default';
@@ -435,6 +436,78 @@ export const searchLogs = async (req: Request, res: Response): Promise<void> => 
     });
   } catch (error) {
     logger.error(`Error searching logs: ${error instanceof Error ? error.message : String(error)}`);
+    res.status(500).json({
+      status: 'error',
+      error: error instanceof Error ? error.message : String(error)
+    });
+  }
+};
+
+/**
+ * Get aggregate statistics for all logs
+ */
+export const getAggregateStatistics = async (req: Request, res: Response): Promise<void> => {
+  try {
+    // Extract namespace parameter
+    const namespace = req.query.namespace as string || DEFAULT_NAMESPACE;
+
+    logger.info(`Getting aggregate statistics, namespace: ${namespace}`);
+
+    // Get the storage adapter for this namespace
+    const namespaceStorage = NamespacedStorageAdapterFactory.getAdapter(namespace, storageOptions);
+
+    // Get statistics directly from the storage adapter
+    const statistics = await namespaceStorage.getAggregateStatistics();
+
+    // Return the statistics
+    res.json({
+      status: 'success',
+      namespace,
+      ...statistics
+    });
+  } catch (error) {
+    logger.error(`Error getting aggregate statistics: ${error instanceof Error ? error.message : String(error)}`);
+    res.status(500).json({
+      status: 'error',
+      error: error instanceof Error ? error.message : String(error)
+    });
+  }
+};
+
+/**
+ * Get statistics for a specific log
+ */
+export const getLogStatistics = async (req: Request, res: Response): Promise<void> => {
+  try {
+    // Extract parameters
+    const { logName } = req.params;
+    const namespace = req.query.namespace as string || DEFAULT_NAMESPACE;
+
+    logger.info(`Getting statistics for log: ${logName}, namespace: ${namespace}`);
+
+    // Get the storage adapter for this namespace
+    const namespaceStorage = NamespacedStorageAdapterFactory.getAdapter(namespace, storageOptions);
+
+    // Get statistics directly from the storage adapter
+    const statistics = await namespaceStorage.getLogStatistics(logName);
+
+    // Check if log exists
+    if (!statistics) {
+      res.status(404).json({
+        status: 'error',
+        error: `Log ${logName} not found or has no entries (namespace: ${namespace})`
+      });
+      return;
+    }
+
+    // Return the statistics
+    res.json({
+      status: 'success',
+      namespace,
+      ...statistics
+    });
+  } catch (error) {
+    logger.error(`Error getting log statistics: ${error instanceof Error ? error.message : String(error)}`);
     res.status(500).json({
       status: 'error',
       error: error instanceof Error ? error.message : String(error)

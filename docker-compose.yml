@@ -1,47 +1,39 @@
-version: '3.8'
 
-services:
-  # NeuralLog server
-  server:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: neurallog-server
-    ports:
-      - "3030:3030"
-    volumes:
-      - server-data:/app/data
-    restart: unless-stopped
-    environment:
-      - NODE_ENV=production
-      - PORT=3030
-      # Choose one of the following storage types by uncommenting:
-      # For Redis storage (recommended for production):
-      - STORAGE_TYPE=redis
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      # For NeDB storage (file-based):
-      # - STORAGE_TYPE=nedb
-      # - DB_PATH=/app/data
-      # For Memory storage (data is lost when container restarts):
-      # - STORAGE_TYPE=memory
-      - DEFAULT_NAMESPACE=default
-    depends_on:
-      - redis
+Console Error
 
-  # Redis service (only needed when using Redis storage)
-  redis:
-    image: redis:7.0-alpine
-    container_name: neurallog-redis
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis-data:/data
-    restart: unless-stopped
-    command: redis-server --appendonly yes
 
-volumes:
-  server-data:
-    driver: local
-  redis-data:
-    driver: local
+Error: Failed to fetch
+
+src/sdk/logs/api-client.ts (91:28) @ LogsApiClient.makeRequest
+
+
+  89 |     }
+  90 |
+> 91 |     const response = await fetch(url, {
+     |                            ^
+  92 |       method,
+  93 |       headers,
+  94 |       body: body ? JSON.stringify(body) : undefined,
+Call Stack
+5
+
+LogsApiClient.makeRequest
+src/sdk/logs/api-client.ts (91:28)
+LogsApiClient.apiRequest
+src/sdk/logs/api-client.ts (71:23)
+LogsApiClient.getLogs
+src/sdk/logs/api-client.ts (109:17)
+LogsService.getLogNames
+src/services/logsService.ts (50:42)
+DashboardPage.useCallback[fetchLogs]
+src/app/dashboard/page.tsx (47:41)
+Was this helpful?
+
+
+
+1
+2
+
+1/1
+
+Next.js 15.2.5 (stale)

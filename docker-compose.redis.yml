@@ -1,0 +1,41 @@
+version: '3.8'
+
+services:
+  # NeuralLog server
+  server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: neurallog-server
+    ports:
+      - "3030:3030"
+    volumes:
+      - server-data:/app/data
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - PORT=3030
+      # Redis storage configuration
+      - STORAGE_TYPE=redis
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - DEFAULT_NAMESPACE=default
+    depends_on:
+      - redis
+
+  # Redis service
+  redis:
+    image: redis:7.0-alpine
+    container_name: neurallog-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+
+volumes:
+  server-data:
+    driver: local
+  redis-data:
+    driver: local
