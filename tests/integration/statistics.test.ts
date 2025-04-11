@@ -2,7 +2,7 @@ import { StorageAdapter } from '../../src/storage/StorageAdapter';
 import { MemoryStorageAdapter } from '../../src/storage/MemoryStorageAdapter';
 import { NeDBStorageAdapter } from '../../src/storage/NeDBStorageAdapter';
 import { RedisStorageAdapter } from '../../src/storage/RedisStorageAdapter';
-import { LogEntry, AggregateStatistics, LogStatistics } from 'neurallog-shared';
+import { LogEntry, AggregateStatistics, LogStatistics } from '@neurallog/shared';
 import { v4 as uuidv4 } from 'uuid';
 import fs from 'fs';
 import path from 'path';

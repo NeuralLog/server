@@ -1,4 +1,4 @@
-import { LogEntry, LogStatistics, AggregateStatistics } from 'neurallog-shared/types';
+import { LogEntry, LogStatistics, AggregateStatistics } from '@neurallog/shared';
 
 /**
  * Storage adapter interface for storing log entries

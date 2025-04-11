@@ -26,7 +26,7 @@ export class Server {
     this.app.use(bodyParser.urlencoded({ extended: true }));
 
     // Configure routes
-    this.app.use('/api', routes);
+    this.app.use('/', routes);
 
     // Add a root route for health checks
     this.app.get('/', (req, res) => {

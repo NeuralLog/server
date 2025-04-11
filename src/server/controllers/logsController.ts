@@ -4,7 +4,7 @@ import { StorageAdapter } from '../../storage/StorageAdapter';
 import { StorageAdapterFactory } from '../../storage/StorageAdapterFactory';
 import { NamespacedStorageAdapterFactory } from '../../storage/NamespacedStorageAdapterFactory';
 import { v4 as uuidv4 } from 'uuid';
-import { LogEntry } from 'neurallog-shared/types';
+import { LogEntry } from '@neurallog/shared';
 
 // Get configuration from environment variables
 const DEFAULT_NAMESPACE = process.env.DEFAULT_NAMESPACE || 'default';

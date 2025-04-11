@@ -3,7 +3,7 @@ import Datastore from 'nedb';
 import fs from 'fs';
 import path from 'path';
 import logger from '../utils/logger';
-import { LogEntry, LogStatistics, AggregateStatistics } from 'neurallog-shared/types';
+import { LogEntry, LogStatistics, AggregateStatistics } from '@neurallog/shared';
 
 // Server namespace prefix for all data
 const SERVER_NAMESPACE = 'logserver';

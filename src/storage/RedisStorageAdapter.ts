@@ -1,7 +1,7 @@
 import { StorageAdapter } from './StorageAdapter';
 import Redis from 'ioredis';
 import logger from '../utils/logger';
-import { LogEntry, LogStatistics, AggregateStatistics } from 'neurallog-shared/types';
+import { LogEntry, LogStatistics, AggregateStatistics } from '@neurallog/shared';
 
 // Server namespace prefix for all keys
 const SERVER_NAMESPACE = 'logserver';

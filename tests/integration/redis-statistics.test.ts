@@ -1,5 +1,5 @@
 import { RedisStorageAdapter } from '../../src/storage/RedisStorageAdapter';
-import { LogEntry, AggregateStatistics, LogStatistics } from 'neurallog-shared';
+import { LogEntry, AggregateStatistics, LogStatistics } from '@neurallog/shared';
 import { v4 as uuidv4 } from 'uuid';
 
 // Test data
@@ -19,7 +19,7 @@ const skipIfNoRedis = () => {
       host: process.env.REDIS_HOST || 'localhost',
       port: process.env.REDIS_PORT ? parseInt(process.env.REDIS_PORT) : 6379
     });
-    
+
     // Ping Redis to check connection
     return client.ping().then(() => {
       client.disconnect();
@@ -53,9 +53,9 @@ describe('Redis Statistics', () => {
       host: process.env.REDIS_HOST || 'localhost',
       port: process.env.REDIS_PORT ? parseInt(process.env.REDIS_PORT) : 6379
     });
-    
+
     await adapter.initialize();
-    
+
     // Clear any existing test data
     await adapter.clearLog(testLogName);
   });
@@ -64,7 +64,7 @@ describe('Redis Statistics', () => {
     if (shouldSkip || !adapter) {
       return;
     }
-    
+
     // Clean up
     await adapter.clearLog(testLogName);
     await adapter.close();
@@ -84,20 +84,20 @@ describe('Redis Statistics', () => {
 
     // Get aggregate statistics
     const aggregateStats = await adapter.getAggregateStatistics();
-    
+
     // Verify aggregate statistics
     expect(aggregateStats).toBeDefined();
     expect(aggregateStats.totalLogs).toBeGreaterThanOrEqual(1);
     expect(aggregateStats.totalEntries).toBeGreaterThanOrEqual(testLogEntries.length);
-    
+
     // Find our test log in the statistics
     const testLogStats = aggregateStats.logStats.find(stat => stat.logName === testLogName);
     expect(testLogStats).toBeDefined();
     expect(testLogStats?.entryCount).toBeGreaterThanOrEqual(testLogEntries.length);
-    
+
     // Get statistics for the specific log
     const logStats = await adapter.getLogStatistics(testLogName);
-    
+
     // Verify log statistics
     expect(logStats).toBeDefined();
     expect(logStats?.logName).toBe(testLogName);
